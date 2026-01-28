@@ -1,6 +1,6 @@
 {
   "name": "votive",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "description": "A file processor.",
   "homepage": "https://github.com/samlfair/votive#readme",
   "bugs": {
@@ -19,7 +19,8 @@
     "./internals": "./lib/index.js"
   },
   "scripts": {
-    "test": "node --test --watch tests/*.js"
+    "test": "node --test --watch tests/*.js",
+    "coverage": "node --test --experimental-test-coverage --watch tests/*.js"
   },
   "dependencies": {
     "encoding-sniffer": "^0.2.1",
