@@ -56,7 +56,7 @@ test("internals", async (t) => {
 
 
   /** @type {ReadText} */
-  function exampleTextReader(text, database, config) {
+  function exampleTextReader(text, filePath, database, config) {
     const matches = text.match(/\b\w+\b/)
     const title = matches ? matches[0] : "Untitled"
 
