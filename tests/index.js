@@ -56,7 +56,7 @@ test("internals", async (t) => {
 
 
   /** @type {ReadText} */
-  function exampleTextReader(text, filePath, database, config) {
+  function exampleTextReader(text, filePath, destinationPath, database, config) {
     const matches = text.match(/\b\w+\b/)
     const title = matches ? matches[0] : "Untitled"
 
@@ -86,7 +86,7 @@ test("internals", async (t) => {
       jobs: [createExampleJob()],
       destinations: [
         {
-          path: "/index.html",
+          path: "index.html",
           abstract: { content: "" },
           metadata: {
             title: "home"
@@ -116,9 +116,8 @@ test("internals", async (t) => {
   }
 
   /** @param {string} sourcePath */
-  function router(sourcePath) {
-    const { base, ...parsed }= path.parse(sourcePath)
-    return path.format({ ...parsed, ext: ".html" })
+  function router({ base, ...parsed }) {
+    return { ...parsed, ext: ".html" }
   }
 
   /** @type {VotivePlugin} */
@@ -207,7 +206,9 @@ test("internals", async (t) => {
     })
 
     database.createOrUpdateDestination({ metadata: { a: 3, b: 4 }, path: "abc/def.html", abstract: { c: 5 }, syntax: "md" })
-    const destination = database.getDestinationDependently("abc.html", ["a"], "abc/def.html")
+    const destination = database.getDestinationDependently("abc.html", "abc/def.html")
+
+    console.info(`'abc/def.html' requests the property 'a' from 'abc.html', creating a dependency: ${destination.metadata.a}`)
 
     const dependencies = database.getDependencies()
 
@@ -293,7 +294,9 @@ test("internals", async (t) => {
     runJobs(jobs, config, database)
 
     const destinations = database.getAllDestinations()
-    database.getDestinationDependently("markdown/prunee.html", ["title"], "abc/def.html")
+    const prunee = database.getDestinationDependently("markdown/prunee.html", "abc/def.html")
+
+    console.info(`'abc/def.html' requests the property 'title' from 'markdown/prunee.html', creating a dependency: ${prunee.metadata.title}`)
     const newDependencies = database.getDependencies()
 
     fs.rmSync("markdown/prunee.md")
@@ -309,6 +312,20 @@ test("internals", async (t) => {
       assert(newDependencies.length - prunedDependencies.length === 1)
       assert(!prunedMetadata)
     })
+
+    const finalDestinations = database.getDestinations({
+      filter: [
+        {
+          property: "a",
+          operator: "gt",
+          value: 3
+        }
+      ]
+    }, "markdown/prunee.html")
+
+    const finalDependencies = database.getDependencies()
+
+    // TODO: Write a test for get destinations
 
     await database.saveDB()
 

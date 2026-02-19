@@ -4,7 +4,8 @@
 
 - [ ] ReadPaths
 - [ ] Flesh out job runners
-- [ ] Destination query filters
+- [x] Destination query filters
+- [x] Setters for metadata
 
 ## Helpers
 
