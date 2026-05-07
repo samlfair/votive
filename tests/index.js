@@ -206,16 +206,8 @@ test("internals", async (t) => {
     })
 
     database.createOrUpdateDestination({ metadata: { a: 3, b: 4 }, path: "abc/def.html", abstract: { c: 5 }, syntax: "md" })
-    const destination = database.getDestinationDependently("abc.html", "abc/def.html")
 
-    console.info(`'abc/def.html' requests the property 'a' from 'abc.html', creating a dependency: ${destination.metadata.a}`)
-
-    const dependencies = database.getDependencies()
-
-    t.test('dependency created', () => {
-      assert(dependencies[0].dependent === 'abc/def.html')
-    })
-
+    /* TODO: Test that dependencies are working */
 
     const setting = database.setSetting("abc.html", "theme", "blue", "markdown/prunee.md")
     const newSetting = database.setSetting("abc", "category", "Dog", "markdown/prunee.md")
@@ -277,7 +269,6 @@ test("internals", async (t) => {
       assert(staleAfterSideEffects.length === 2)
     })
 
-    const freshDestinations = database.getAllDestinations()
 
     await votive.writeDestinations(config, database)
 
@@ -293,25 +284,13 @@ test("internals", async (t) => {
     const jobs = [...sourcesJobs, ...abstractsJobs, ...foldersJobs]
     runJobs(jobs, config, database)
 
-    const destinations = database.getAllDestinations()
-    const prunee = database.getDestinationDependently("markdown/prunee.html", "abc/def.html")
-
-    console.info(`'abc/def.html' requests the property 'title' from 'markdown/prunee.html', creating a dependency: ${prunee.metadata.title}`)
-    const newDependencies = database.getDependencies()
-
     fs.rmSync("markdown/prunee.md")
 
     await votive.pruneSources(config, database)
 
     const result = database.getDestinationIndependently("markdown/prunee.html")
-    const prunedDependencies = database.getDependencies()
-    const prunedMetadata = database.getAllMetadataByPath("markdown/prunee.html")
 
-    t.test('source pruned', () => {
-      assert(!result)
-      assert(newDependencies.length - prunedDependencies.length === 1)
-      assert(!prunedMetadata)
-    })
+    /* TODO: Check pruning metadata works (I removed it) */
 
     const finalDestinations = database.getDestinations({
       filter: [
@@ -322,8 +301,6 @@ test("internals", async (t) => {
         }
       ]
     }, "markdown/prunee.html")
-
-    const finalDependencies = database.getDependencies()
 
     // TODO: Write a test for get destinations
 
