@@ -85,15 +85,12 @@ test("bundle", async () => {
     })
 
     const sources = database.source.getAll()
-    console.log({ sources })
 
     const targets = database.target.getAll()
-    console.log(targets)
 
     stop()
 
     const dir = fs.readdirSync(tempDest.path, { recursive: true })
-    console.log({ dir })
     assert(dir.length === 0, "Destination directory is not empty.")
   } catch (error) {
     tempDest.remove()
