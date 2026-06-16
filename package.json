@@ -1,6 +1,6 @@
 {
   "name": "votive",
-  "version": "0.0.8",
+  "version": "0.1.0",
   "description": "A file processor.",
   "homepage": "https://github.com/samlfair/votive#readme",
   "bugs": {
@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "encoding-sniffer": "^0.2.1",
+    "p-limit": "^7.3.0",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.0.0",
     "workerpool": "^10.0.1"
