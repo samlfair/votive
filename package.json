@@ -1,0 +1,32 @@
+{
+  "name": "votive",
+  "version": "0.4.1",
+  "description": "A file processor.",
+  "homepage": "https://github.com/samlfair/votive#readme",
+  "bugs": {
+    "url": "https://github.com/samlfair/votive/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samlfair/votive.git"
+  },
+  "license": "MIT",
+  "author": "Sam Littlefair",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./lib/bundle.js",
+    "./internals": "./lib/index.js"
+  },
+  "scripts": {
+    "test": "node --test --watch tests/*.js",
+    "coverage": "node --test --experimental-test-coverage --watch tests/*.js"
+  },
+  "dependencies": {
+    "encoding-sniffer": "^0.2.1",
+    "p-limit": "^7.3.0",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.0.0",
+    "workerpool": "^10.0.1"
+  }
+}

@@ -1,0 +1,10 @@
+{
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": true,
+		"noImplicitlyAny": true,
+		"module": "esnext",
+		"target": "esnext",
+		"moduleResolution": "nodenext"
+	}
+}
