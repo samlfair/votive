@@ -63,7 +63,7 @@ test("bundle: buffer processing and URL fetches a plugin claims are both deferre
                 return {
                   abstract: {},
                   metadata: {},
-                  jobs: [{ data: text.trim(), runner: "text", destination: "page.html", syntax: ".md" }]
+                  jobs: [{ data: text.trim(), runner: "text", destination: "page.html", extension: ".md" }]
                 }
               }
             }
@@ -119,7 +119,7 @@ test("bundle: runFetches auto-triggers a rebuild that picks up the newly-staled 
               return {
                 abstract: { type: "page" },
                 metadata: {},
-                jobs: [{ data: text.trim(), runner: "text", destination: "page.html", syntax: ".md" }]
+                jobs: [{ data: text.trim(), runner: "text", destination: "page.html", extension: ".md" }]
               }
             }
           }]
