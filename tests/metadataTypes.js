@@ -40,18 +40,18 @@ test("metadata values round-trip as real JS types, not JSON-encoded strings", as
     assertShape(target.metadata, "target.getStale")
   })
 
-  await t.test("getManyWithTrackers - empty filter path (buildGetManyEmptySQL)", () => {
+  await t.test("target.getByFolder - empty filter path (buildGetManyEmptySQL)", () => {
     const database = createDatabase(":memory:")
     database.target.create({ path: "a.html", abstract: {}, metadata: seedMetadata })
-    const results = database.target.getManyWithTrackers({ query: {}, dependent: "d.html" })
-    assertShape(results.find(t => t.path === "a.html").metadata, "getManyWithTrackers (empty)")
+    const results = database.target.getByFolder({ query: {}, dependent: "d.html" })
+    assertShape(results.find(t => t.path === "a.html").metadata, "getByFolder (empty)")
   })
 
-  await t.test("getManyWithTrackers - filter engine path (buildGetManySQL)", () => {
+  await t.test("target.getByFolder - filter engine path (buildGetManySQL)", () => {
     const database = createDatabase(":memory:")
     database.target.create({ path: "a.html", abstract: {}, metadata: seedMetadata })
-    const results = database.target.getManyWithTrackers({ query: { active: true }, dependent: "d.html" })
-    assertShape(results.find(t => t.path === "a.html").metadata, "getManyWithTrackers (filtered)")
+    const results = database.target.getByFolder({ query: { active: true }, dependent: "d.html" })
+    assertShape(results.find(t => t.path === "a.html").metadata, "getByFolder (filtered)")
   })
 
   await t.test("target.getByFolder", () => {

@@ -15,7 +15,7 @@ function seed(database, targets) {
 /** @param {ReturnType<createDatabase>} database */
 function paths(database, query) {
   return database.target
-    .getManyWithTrackers({ query, dependent: "dependent.html" })
+    .getByFolder({ query, dependent: "dependent.html" })
     .map(target => target.path)
 }
 
