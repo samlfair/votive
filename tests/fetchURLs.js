@@ -37,7 +37,7 @@ test("fetchURLs: only jobs a plugin has claimed are fetched at all", async (t) =
 
     try {
       const database = createDatabase(":memory:")
-      const job = { data: `${baseUrl}/page`, runner: "text", syntax: ".md" }
+      const job = { data: `${baseUrl}/page`, runner: "text", extension: ".md" }
       const { pending, runFetches } = await fetchURLs([job], { plugins: [] }, database)
 
       assert.equal(requests, 0)
@@ -58,7 +58,7 @@ test("fetchURLs: only jobs a plugin has claimed are fetched at all", async (t) =
 
     try {
       const database = createDatabase(":memory:")
-      const job = { data: `${baseUrl}/asset`, runner: "text", destination: "post.html", syntax: ".md" }
+      const job = { data: `${baseUrl}/asset`, runner: "text", destination: "post.html", extension: ".md" }
       const config = pluginConfigFor(data => ({ optimized: true, raw: data }))
 
       const { pending, runFetches } = await fetchURLs([job], config, database)
@@ -94,7 +94,7 @@ test("fetchURLs: only jobs a plugin has claimed are fetched at all", async (t) =
 
     try {
       const database = createDatabase(":memory:")
-      const job = { data: `${baseUrl}/start`, runner: "text", syntax: ".md" }
+      const job = { data: `${baseUrl}/start`, runner: "text", extension: ".md" }
       const config = pluginConfigFor(data => ({ body: data }))
 
       const { runFetches } = await fetchURLs([job], config, database)
@@ -115,7 +115,7 @@ test("fetchURLs: only jobs a plugin has claimed are fetched at all", async (t) =
 
     try {
       const database = createDatabase(":memory:")
-      const job = { data: `${baseUrl}/missing`, runner: "text", syntax: ".md" }
+      const job = { data: `${baseUrl}/missing`, runner: "text", extension: ".md" }
       const config = pluginConfigFor(data => ({ body: data }))
 
       const { runFetches } = await fetchURLs([job], config, database)
@@ -140,7 +140,7 @@ test("fetchURLs: only jobs a plugin has claimed are fetched at all", async (t) =
     })
 
     try {
-      const job = { data: `${baseUrl}/flaky`, runner: "text", syntax: ".md" }
+      const job = { data: `${baseUrl}/flaky`, runner: "text", extension: ".md" }
       const config = pluginConfigFor(data => ({ body: data }))
 
       const first = await fetchURLs([job], config, database)
@@ -167,7 +167,7 @@ test("fetchURLs: only jobs a plugin has claimed are fetched at all", async (t) =
 
     try {
       const database = createDatabase(":memory:")
-      const job = { data: `${baseUrl}/slow`, runner: "text", syntax: ".md" }
+      const job = { data: `${baseUrl}/slow`, runner: "text", extension: ".md" }
       const config = { ...pluginConfigFor(data => ({ body: data })), urlFetchTimeout: 50 }
 
       const { runFetches } = await fetchURLs([job], config, database)
