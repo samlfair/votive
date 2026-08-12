@@ -125,4 +125,40 @@ test("readBuffers: deferred buffer processing", async (t) => {
       assert.equal(readFileCalls, 1)
     })
   })
+
+  await t.test("config.cacheDirectory overrides where the buffer cache is written", async () => {
+    await withTempSourceFolder(async (sourceFolder) => {
+      await writeFile(path.join(sourceFolder, "photo.bin"), "binary content")
+
+      const database = createDatabase(":memory:")
+
+      const processors = [{
+        plugin: { name: "test-buffer-plugin" },
+        processor: {
+          extensions: [".bin"],
+          format: "buffer",
+          readFile() {
+            return { abstract: {}, metadata: {} }
+          }
+        }
+      }]
+
+      const customCacheDir = path.join(sourceFolder, "elsewhere-cache")
+      const config = {
+        sourceFolder,
+        destinationFolder: path.join(sourceFolder, "_out"),
+        cacheDirectory: customCacheDir,
+        plugins: []
+      }
+
+      const { sources } = await readSources(config, database, processors)
+      await readBuffers(sources, config, database).runBuffers()
+
+      const cacheFiles = await readdir(customCacheDir)
+      assert.equal(cacheFiles.length, 1)
+
+      // The default location was never created.
+      await assert.rejects(() => readdir(path.join(sourceFolder, ".cache")))
+    })
+  })
 })

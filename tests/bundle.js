@@ -226,3 +226,42 @@ test("bundle: a target created via runBuffers() actually reaches the on-disk .vo
     assert.deepEqual(rows.map(r => r.path), ["photo.html"])
   })
 })
+
+test("bundle: config.databasePath overrides where .votive.db is written", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "photo.bin"), "binary content")
+    const customDbDir = path.join(sourceFolder, "elsewhere")
+    await import("node:fs/promises").then(fs => fs.mkdir(customDbDir, { recursive: true }))
+
+    const config = {
+      sourceFolder,
+      destinationFolder: path.join(sourceFolder, "_out"),
+      databasePath: path.join(customDbDir, "custom.db"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        router: () => ({ dir: [], name: "photo", ext: ".html" }),
+        processors: [{
+          extensions: [".bin", ".html"],
+          format: "buffer",
+          writeFile: () => ({ data: "" }),
+          readFile: () => ({ abstract: { kind: "photo" }, metadata: {} })
+        }]
+      }]
+    }
+
+    const queue = await bundler(config)
+    const first = await queue()
+    await first.runBuffers()
+
+    const { DatabaseSync } = await import("node:sqlite")
+    const reopened = new DatabaseSync(path.join(customDbDir, "custom.db"), { readOnly: true })
+    const rows = reopened.prepare("SELECT path FROM destinations WHERE path = 'photo.html'").all()
+    reopened.close()
+
+    assert.deepEqual(rows.map(r => r.path), ["photo.html"])
+
+    // The default location was never touched.
+    await assert.rejects(() => import("node:fs/promises").then(fs => fs.stat(path.join(sourceFolder, ".votive.db"))))
+  })
+})
