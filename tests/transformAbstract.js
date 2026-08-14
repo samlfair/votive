@@ -100,7 +100,7 @@ test("readAbstracts: a transformFile hook can still queue jobs alongside transfo
           readFile: () => ({ abstract: { scanned: false }, metadata: {} }),
           transformFile: (abstract) => ({
             abstract: { scanned: true },
-            jobs: [{ data: "https://example.com", runner: "text", destination: "page.html" }]
+            urls: [{ data: "https://example.com", runner: "text", destination: "page.html" }]
           })
         }]
       }]

@@ -21,7 +21,7 @@ function pluginConfigFor(fetcher) {
   return {
     plugins: [{
       name: "test-plugin",
-      processors: [{ extensions: [".md"], read: { url: fetcher } }]
+      processors: [{ extensions: [".md"], readURL: fetcher }]
     }]
   }
 }
