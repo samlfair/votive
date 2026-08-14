@@ -220,7 +220,7 @@ test("bundle: a target created via runBuffers() actually reaches the on-disk .vo
     // the pass that actually created it.
     const { DatabaseSync } = await import("node:sqlite")
     const reopened = new DatabaseSync(path.join(sourceFolder, ".votive.db"), { readOnly: true })
-    const rows = reopened.prepare("SELECT path FROM destinations WHERE path = 'photo.html'").all()
+    const rows = reopened.prepare("SELECT path FROM targets WHERE path = 'photo.html'").all()
     reopened.close()
 
     assert.deepEqual(rows.map(r => r.path), ["photo.html"])
@@ -256,7 +256,7 @@ test("bundle: config.databasePath overrides where .votive.db is written", async 
 
     const { DatabaseSync } = await import("node:sqlite")
     const reopened = new DatabaseSync(path.join(customDbDir, "custom.db"), { readOnly: true })
-    const rows = reopened.prepare("SELECT path FROM destinations WHERE path = 'photo.html'").all()
+    const rows = reopened.prepare("SELECT path FROM targets WHERE path = 'photo.html'").all()
     reopened.close()
 
     assert.deepEqual(rows.map(r => r.path), ["photo.html"])

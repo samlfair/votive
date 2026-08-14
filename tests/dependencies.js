@@ -4,7 +4,7 @@ import createDatabase from "../lib/createDatabase.js"
 
 /** @param {ReturnType<createDatabase>} database */
 function isStale(database, targetPath) {
-  const row = database.raw.prepare("SELECT stale FROM destinations WHERE path = ?").get(targetPath)
+  const row = database.raw.prepare("SELECT stale FROM targets WHERE path = ?").get(targetPath)
   return Boolean(row && row.stale)
 }
 
@@ -129,10 +129,10 @@ test("dependencies: folder/folder_recursive typing and invalidation", async (t) 
 
     database.target.delete("a.html")
 
-    const metadataRows = database.raw.prepare("SELECT * FROM metadata WHERE destination = ?").all("a.html")
+    const metadataRows = database.raw.prepare("SELECT * FROM metadata WHERE target = ?").all("a.html")
     assert.deepEqual(metadataRows, [])
 
-    const dependencyRows = database.raw.prepare("SELECT * FROM dependencies WHERE destination = ?").all("a.html")
+    const dependencyRows = database.raw.prepare("SELECT * FROM dependencies WHERE target = ?").all("a.html")
     assert.deepEqual(dependencyRows, [])
   })
 

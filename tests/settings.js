@@ -4,7 +4,7 @@ import createDatabase from "../lib/createDatabase.js"
 
 /** @param {ReturnType<createDatabase>} database */
 function isStale(database, targetPath) {
-  const row = database.raw.prepare("SELECT stale FROM destinations WHERE path = ?").get(targetPath)
+  const row = database.raw.prepare("SELECT stale FROM targets WHERE path = ?").get(targetPath)
   return Boolean(row && row.stale)
 }
 
