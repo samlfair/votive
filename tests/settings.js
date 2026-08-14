@@ -8,42 +8,56 @@ function isStale(database, targetPath) {
   return Boolean(row && row.stale)
 }
 
-test("settings, now backed by folder-scoped metadata rows", async (t) => {
-  await t.test("a root-level setting appears at index 0 of a descendant's ancestor array", () => {
+test("settings, now backed by accumulating folder-scoped metadata rows", async (t) => {
+  await t.test("a root-level contribution appears at index 0 of a descendant's ancestor array", () => {
     const database = createDatabase(":memory:")
-    database.setting.create("", "title", "My Site")
+    database.setting.accumulate("", { title: "My Site" }, "settings.md")
 
     const settings = database.setting.getByFolder("blog/2024")
-    assert.equal(settings.title[0], "My Site")
-    assert.equal(settings.title[1], null)
-    assert.equal(settings.title[2], null)
+    assert.deepEqual(settings.title[0], ["My Site"])
+    assert.deepEqual(settings.title[1], [])
+    assert.deepEqual(settings.title[2], [])
   })
 
-  await t.test("a folder-level setting only appears at that folder's own index", () => {
+  await t.test("a folder-level contribution only appears at that folder's own index", () => {
     const database = createDatabase(":memory:")
-    database.setting.create("blog", "layout", "post")
+    database.setting.accumulate("blog", { layout: "post" }, "settings.md")
 
     const settings = database.setting.getByFolder("blog/2024")
-    assert.equal(settings.layout[0], null) // root
-    assert.equal(settings.layout[1], "post") // blog
-    assert.equal(settings.layout[2], null) // blog/2024
+    assert.deepEqual(settings.layout[0], []) // root
+    assert.deepEqual(settings.layout[1], ["post"]) // blog
+    assert.deepEqual(settings.layout[2], []) // blog/2024
 
     const unrelated = database.setting.getByFolder("other")
     assert.equal(unrelated.layout, undefined) // "layout" has no row anywhere in "other"'s ancestor chain
   })
 
-  await t.test("re-creating a setting under the same folder+label replaces rather than accumulates", () => {
+  await t.test("accumulate: a second contribution to the same folder+label appends rather than replacing", () => {
     const database = createDatabase(":memory:")
-    database.setting.create("", "stylesheets", "reset.css")
-    database.setting.create("", "stylesheets", "typography.css")
+    database.setting.accumulate("", { stylesheets: "reset.css" }, "a.css")
+    database.setting.accumulate("", { stylesheets: "typography.css" }, "b.css")
 
-    assert.equal(database.setting.getByFolder("").stylesheets[0], "typography.css")
+    assert.deepEqual(database.setting.getByFolder("").stylesheets[0], ["reset.css", "typography.css"])
+  })
+
+  await t.test("accumulate: an array value is spread - each element becomes its own contribution", () => {
+    const database = createDatabase(":memory:")
+    database.setting.accumulate("", { stylesheets: ["reset.css", "typography.css"] }, "settings.md")
+
+    assert.deepEqual(database.setting.getByFolder("").stylesheets[0], ["reset.css", "typography.css"])
+  })
+
+  await t.test("accumulate: a non-array value is pushed as a single contribution", () => {
+    const database = createDatabase(":memory:")
+    database.setting.accumulate("", { theme: "default" }, "settings.md")
+
+    assert.deepEqual(database.setting.getByFolder("").theme[0], ["default"])
   })
 
   await t.test("metadata rows written for a target (class='target') don't leak into settings.getAll", () => {
     const database = createDatabase(":memory:")
     database.target.create({ path: "a.html", abstract: {}, metadata: { title: "A" } })
-    database.setting.create("", "title", "Site")
+    database.setting.accumulate("", { title: "Site" }, "settings.md")
 
     const all = database.setting.getAll()
     assert.equal(all.length, 1)
@@ -54,75 +68,47 @@ test("settings, now backed by folder-scoped metadata rows", async (t) => {
   await t.test("a target's own metadata query doesn't pick up folder-scoped settings", () => {
     const database = createDatabase(":memory:")
     database.target.create({ path: "a.html", abstract: {}, metadata: { status: "published" } })
-    database.setting.create("", "title", "Site")
+    database.setting.accumulate("", { title: "Site" }, "settings.md")
 
     const target = database.target.get("a.html")
     assert.deepEqual(target.metadata, { status: "published" })
   })
 
-  await t.test("deleteBySource removes only that source's settings and stales the dependents that read it", () => {
+  await t.test("deleteBySource removes only that source's contributions, leaving other sources' contributions to the same row intact", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
-    database.setting.create("", "title", "Initial")
-    database.target.markFresh("nav.html")
+    database.setting.accumulate("", { stylesheets: "reset.css" }, "a.css")
+    database.setting.accumulate("", { stylesheets: "typography.css" }, "b.css")
 
-    database.setting.getByFolder("", "nav.html").title[0] // simulate a template reading this
+    database.setting.deleteBySource("a.css")
 
-    database.setting.create("", "title", "Site", "settings.md")
-    assert.equal(isStale(database, "nav.html"), true)
-    database.target.markFresh("nav.html")
+    assert.deepEqual(database.setting.getByFolder("").stylesheets[0], ["typography.css"])
+  })
+
+  await t.test("deleteBySource deletes the row outright once its last contribution is removed", () => {
+    const database = createDatabase(":memory:")
+    database.setting.accumulate("", { title: "Site" }, "settings.md")
 
     database.setting.deleteBySource("settings.md")
 
     assert.deepEqual(database.setting.getAll(), [])
+  })
+
+  await t.test("deleteBySource stales the dependents that read the row it touched", () => {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
+    database.setting.accumulate("", { title: "Initial" }, "settings.md")
+    database.target.markFresh("nav.html")
+
+    database.setting.getByFolder("", "nav.html").title[0] // simulate a template reading this
+
+    database.setting.deleteBySource("settings.md")
+
     assert.equal(isStale(database, "nav.html"), true)
   })
 
-  await t.test("getByFolder: calling .push() on the array accumulates onto this folder's own row", () => {
+  await t.test("getByFolder: a value obtained via indexing is a fresh array each read, never a shared reference", () => {
     const database = createDatabase(":memory:")
-    database.setting.create("", "stylesheets", "reset.css") // a label must already exist to be reachable via property access
-
-    const settings = database.setting.getByFolder("")
-    settings.stylesheets.push("typography.css")
-    settings.stylesheets.push("default.css")
-
-    assert.deepEqual(database.setting.getByFolder("").stylesheets[0], ["reset.css", "typography.css", "default.css"])
-  })
-
-  await t.test("getByFolder: .push() upgrades a prior scalar value into an array on first push", () => {
-    const database = createDatabase(":memory:")
-    database.setting.create("blog", "tags", "only-one")
-    database.setting.getByFolder("blog").tags.push("second")
-
-    assert.deepEqual(database.setting.getByFolder("blog").tags[1], ["only-one", "second"])
-  })
-
-  await t.test("getByFolder: .push() always targets this folder's own row, regardless of ancestor depth read", () => {
-    const database = createDatabase(":memory:")
-    database.setting.create("blog", "stylesheets", "seed.css") // known at "blog", not yet at "blog/travel" or root
-
-    const settings = database.setting.getByFolder("blog/travel")
-    settings.stylesheets[0] // read root - should not affect where the push below lands
-    settings.stylesheets.push("local.css")
-
-    const check = database.setting.getByFolder("blog/travel")
-    assert.equal(check.stylesheets[0], null) // root untouched
-    assert.deepEqual(check.stylesheets[2], ["local.css"]) // blog/travel got it
-  })
-
-  await t.test("getByFolder: plain assignment overwrites this folder's own row", () => {
-    const database = createDatabase(":memory:")
-    database.setting.create("", "theme", "default")
-
-    const settings = database.setting.getByFolder("")
-    settings.theme = "updated"
-
-    assert.equal(database.setting.getByFolder("").theme[0], "updated")
-  })
-
-  await t.test("getByFolder: a value obtained via indexing is a read-only snapshot", () => {
-    const database = createDatabase(":memory:")
-    database.setting.create("", "stylesheets", ["a.css"])
+    database.setting.accumulate("", { stylesheets: "a.css" }, "settings.md")
 
     const settings = database.setting.getByFolder("")
     const snapshot = settings.stylesheets[0]
@@ -134,7 +120,7 @@ test("settings, now backed by folder-scoped metadata rows", async (t) => {
   await t.test("getByFolder: reading a specific ancestor index tracks a dependency scoped to exactly that folder", () => {
     const database = createDatabase(":memory:")
     database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
-    database.setting.create("", "theme", "Initial")
+    database.setting.accumulate("", { theme: "Initial" }, "settings.md")
     database.target.markFresh("nav.html")
 
     const settings = database.setting.getByFolder("blog/travel", "nav.html")
@@ -142,61 +128,43 @@ test("settings, now backed by folder-scoped metadata rows", async (t) => {
 
     // A change at "blog" (a different ancestor than the one read, and already
     // a known label there once it exists at root) should NOT stale nav.html.
-    database.setting.create("blog", "theme", "Dark")
+    database.setting.accumulate("blog", { theme: "Dark" }, "settings.md")
     assert.equal(isStale(database, "nav.html"), false)
 
     // A change at "" (root, the one actually read) should stale it.
-    database.setting.create("", "theme", "Light")
+    database.setting.accumulate("", { theme: "Light" }, "settings.md")
     assert.equal(isStale(database, "nav.html"), true)
   })
 
   await t.test("getByFolder: iterating the whole array tracks every ancestor level it touches", () => {
     const database = createDatabase(":memory:")
     database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
-    database.setting.create("", "theme", "Initial")
+    database.setting.accumulate("", { theme: "Initial" }, "settings.md")
     database.target.markFresh("nav.html")
 
     const settings = database.setting.getByFolder("blog/travel", "nav.html")
     settings.theme.map(v => v) // touches every index, not just one
 
-    database.setting.create("blog", "theme", "Dark")
+    database.setting.accumulate("blog", { theme: "Dark" }, "settings.md")
     assert.equal(isStale(database, "nav.html"), true)
   })
 
   await t.test("getByFolder: a change to a different, already-known label does not stale a dependent that only read another label", () => {
     const database = createDatabase(":memory:")
     database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
-    database.setting.create("", "theme", "Initial")
-    database.setting.create("", "stylesheets", "reset.css")
+    database.setting.accumulate("", { theme: "Initial", stylesheets: "reset.css" }, "settings.md")
     database.target.markFresh("nav.html")
 
     database.setting.getByFolder("", "nav.html").theme[0]
 
-    database.setting.create("", "stylesheets", "typography.css") // stylesheets already known - a plain update, not a first appearance
+    database.setting.accumulate("", { stylesheets: "typography.css" }, "settings.md") // stylesheets already known - a plain update, not a first appearance
     assert.equal(isStale(database, "nav.html"), false)
-  })
-
-  await t.test("merge() sets one field of an object-valued setting without clobbering the rest", () => {
-    const database = createDatabase(":memory:")
-    database.setting.merge("").author = { name: "A", bio: "hello" }
-    database.setting.merge("").author.name = "B"
-
-    assert.deepEqual(database.setting.getByFolder("").author[0], { name: "B", bio: "hello" })
-  })
-
-  await t.test("merge() onto a non-object existing value discards it and starts fresh", () => {
-    const database = createDatabase(":memory:")
-    database.setting.create("x", "list", "a")
-    database.setting.merge("x").list.extra = "nope"
-
-    // folderAncestors("x") is ["", "x"] - index 1 is "x" itself.
-    assert.deepEqual(database.setting.getByFolder("x").list[1], { extra: "nope" })
   })
 
   await t.test("getByFolder: Object.keys()/for-in/spread list every label set anywhere in the ancestor chain", () => {
     const database = createDatabase(":memory:")
-    database.setting.create("", "title", "My Site")
-    database.setting.create("blog", "layout", "post")
+    database.setting.accumulate("", { title: "My Site" }, "settings.md")
+    database.setting.accumulate("blog", { layout: "post" }, "settings.md")
 
     const settings = database.setting.getByFolder("blog/2024")
 
@@ -211,7 +179,7 @@ test("settings, now backed by folder-scoped metadata rows", async (t) => {
 
   await t.test("getByFolder: a folder with no settings anywhere in its ancestor chain enumerates empty", () => {
     const database = createDatabase(":memory:")
-    database.setting.create("other", "title", "Unrelated")
+    database.setting.accumulate("other", { title: "Unrelated" }, "settings.md")
 
     assert.deepEqual(Object.keys(database.setting.getByFolder("blog/2024")), [])
   })
@@ -219,12 +187,12 @@ test("settings, now backed by folder-scoped metadata rows", async (t) => {
   await t.test("getByFolder: merely enumerating keys (no value read) does not register a dependency", () => {
     const database = createDatabase(":memory:")
     database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
-    database.setting.create("", "title", "My Site")
+    database.setting.accumulate("", { title: "My Site" }, "settings.md")
     database.target.markFresh("nav.html")
 
     Object.keys(database.setting.getByFolder("", "nav.html"))
 
-    database.setting.create("", "title", "Renamed Site")
+    database.setting.accumulate("", { title: "Renamed Site" }, "settings.md")
     assert.equal(isStale(database, "nav.html"), false)
   })
 
@@ -233,17 +201,18 @@ test("settings, now backed by folder-scoped metadata rows", async (t) => {
     const settings = database.setting.getByFolder("")
 
     assert.equal(settings.neverSet, undefined)
-    assert.throws(() => settings.neverSet.push("x"), TypeError)
   })
 
-  await t.test("getByFolder: plain assignment to a never-set label throws instead of silently creating an unpersisted property", () => {
+  await t.test("getByFolder: plain assignment to any label throws - there is no write path through this object", () => {
     const database = createDatabase(":memory:")
+    database.setting.accumulate("", { theme: "default" }, "settings.md")
     const settings = database.setting.getByFolder("")
 
+    assert.throws(() => { settings.theme = "updated" }, TypeError)
     assert.throws(() => { settings.neverSet = "x" }, TypeError)
   })
 
-  await t.test("setting.create: a label appearing for the first time in a folder's ancestor chain stales every existing target under that folder, recursively", () => {
+  await t.test("accumulate: a label appearing for the first time in a folder's ancestor chain stales every existing target under that folder, recursively", () => {
     const database = createDatabase(":memory:")
     database.target.create({ path: "index.html", abstract: {}, metadata: {} })
     database.target.create({ path: "blog/index.html", abstract: {}, metadata: {} })
@@ -253,7 +222,7 @@ test("settings, now backed by folder-scoped metadata rows", async (t) => {
       database.target.markFresh(path)
     }
 
-    database.setting.create("blog", "accent_color", "Blue") // never set anywhere before
+    database.setting.accumulate("blog", { accent_color: "Blue" }, "settings.md") // never set anywhere before
 
     assert.equal(isStale(database, "blog/index.html"), true) // blog itself
     assert.equal(isStale(database, "blog/travel/index.html"), true) // descendant of blog
@@ -264,7 +233,7 @@ test("settings, now backed by folder-scoped metadata rows", async (t) => {
       database.target.markFresh(path)
     }
 
-    database.setting.create("blog", "accent_color", "Green") // already known now - a plain update
+    database.setting.accumulate("blog", { accent_color: "Green" }, "settings.md") // already known now - a plain update
 
     assert.equal(isStale(database, "blog/index.html"), false)
     assert.equal(isStale(database, "blog/travel/index.html"), false)

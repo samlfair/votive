@@ -63,7 +63,7 @@ test("metadata values round-trip as real JS types, not JSON-encoded strings", as
 
   await t.test("setting.getByFolder", () => {
     const database = createDatabase(":memory:")
-    database.setting.create("", "stylesheets", ["reset.css", "typography.css"])
+    database.setting.accumulate("", { stylesheets: ["reset.css", "typography.css"] }, "settings.md")
     const settings = database.setting.getByFolder("")
     assert.deepEqual(settings.stylesheets[0], ["reset.css", "typography.css"])
   })
