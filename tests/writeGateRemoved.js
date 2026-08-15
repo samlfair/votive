@@ -15,13 +15,13 @@ async function withTempSourceFolder(run) {
   }
 }
 
-test("writeDestinations: a target with an empty abstract is still written - the plugin decides, not a generic gate", async () => {
+test("writeTargets: a target with an empty abstract is still written - the plugin decides, not a generic gate", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "trigger.md"), "content")
 
     const config = {
       sourceFolder,
-      destinationFolder: path.join(sourceFolder, "_out"),
+      targetFolder: path.join(sourceFolder, "_out"),
       verbose: false,
       plugins: [{
         name: "test-plugin",
@@ -29,14 +29,14 @@ test("writeDestinations: a target with an empty abstract is still written - the 
         processors: [{
           extensions: [".md", ".html"],
           format: "text",
-          readFile: (text, filePath, destinationPath, settings, api) => {
+          readFile: (text, filePath, targetPath, settings, api) => {
             // Deliberately empty abstract, matching the shape a
             // dispatch-by-path writer (like xml/index.js's sitemap/feed
             // targets) uses today - it never reads `abstract` at all.
             api.createTarget({ path: "always-written.html", abstract: {}, metadata: {} })
             return { abstract: {}, metadata: {} }
           },
-          writeFile: (destination) => ({ data: `written:${destination.path}` })
+          writeFile: (target) => ({ data: `written:${target.path}` })
         }]
       }]
     }
@@ -44,8 +44,8 @@ test("writeDestinations: a target with an empty abstract is still written - the 
     const queue = await bundler(config)
     await queue()
 
-    const triggerContent = await readFile(path.join(config.destinationFolder, "trigger.html"), "utf-8")
-    const alwaysContent = await readFile(path.join(config.destinationFolder, "always-written.html"), "utf-8")
+    const triggerContent = await readFile(path.join(config.targetFolder, "trigger.html"), "utf-8")
+    const alwaysContent = await readFile(path.join(config.targetFolder, "always-written.html"), "utf-8")
 
     assert.equal(triggerContent, "written:trigger.html")
     assert.equal(alwaysContent, "written:always-written.html")

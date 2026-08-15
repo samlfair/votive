@@ -37,7 +37,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
         }
       }]
 
-      const config = { sourceFolder, destinationFolder: path.join(sourceFolder, "_out"), plugins: [] }
+      const config = { sourceFolder, targetFolder: path.join(sourceFolder, "_out"), plugins: [] }
       const { sources } = await readSources(config, database, processors)
 
       assert.equal(readFileCalls, 0)
@@ -68,7 +68,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
         }
       }]
 
-      const config = { sourceFolder, destinationFolder: path.join(sourceFolder, "_out"), plugins: [] }
+      const config = { sourceFolder, targetFolder: path.join(sourceFolder, "_out"), plugins: [] }
       const { sources } = await readSources(config, database, processors)
       const { tasks, runBuffers } = readBuffers(sources, config, database)
 
@@ -106,7 +106,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
         }
       }]
 
-      const config = { sourceFolder, destinationFolder: path.join(sourceFolder, "_out"), plugins: [] }
+      const config = { sourceFolder, targetFolder: path.join(sourceFolder, "_out"), plugins: [] }
 
       const first = await readSources(config, database, processors)
       await readBuffers(first.sources, config, database).runBuffers()
@@ -146,7 +146,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
       const customCacheDir = path.join(sourceFolder, "elsewhere-cache")
       const config = {
         sourceFolder,
-        destinationFolder: path.join(sourceFolder, "_out"),
+        targetFolder: path.join(sourceFolder, "_out"),
         cacheDirectory: customCacheDir,
         plugins: []
       }

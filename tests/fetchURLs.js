@@ -58,7 +58,7 @@ test("fetchURLs: only jobs a plugin has claimed are fetched at all", async (t) =
 
     try {
       const database = createDatabase(":memory:")
-      const job = { data: `${baseUrl}/asset`, runner: "text", destination: "post.html", extension: ".md" }
+      const job = { data: `${baseUrl}/asset`, runner: "text", target: "post.html", extension: ".md" }
       const config = pluginConfigFor(data => ({ optimized: true, raw: data }))
 
       const { pending, runFetches } = await fetchURLs([job], config, database)

@@ -109,7 +109,7 @@ test("dependencies: folder/folder_recursive typing and invalidation", async (t) 
     assert.equal(isStale(database, "nav.html"), true)
   })
 
-  await t.test("url.create with a destination records a type='url' dependency", () => {
+  await t.test("url.create with a target records a type='url' dependency", () => {
     const database = createDatabase(":memory:")
     database.url.create("https://example.com/embed", { title: "Example" }, "post.html")
 

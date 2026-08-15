@@ -21,7 +21,7 @@ test("readAbstracts: a transformFile processor's result persists to the target's
 
     const config = {
       sourceFolder,
-      destinationFolder: path.join(sourceFolder, "_out"),
+      targetFolder: path.join(sourceFolder, "_out"),
       verbose: false,
       plugins: [{
         name: "test-plugin",
@@ -53,7 +53,7 @@ test("readAbstracts: multiple transformer processors chain, each seeing the prev
 
     const config = {
       sourceFolder,
-      destinationFolder: path.join(sourceFolder, "_out"),
+      targetFolder: path.join(sourceFolder, "_out"),
       verbose: false,
       plugins: [{
         name: "test-plugin",
@@ -88,7 +88,7 @@ test("readAbstracts: a transformFile hook can still queue jobs alongside transfo
 
     const config = {
       sourceFolder,
-      destinationFolder: path.join(sourceFolder, "_out"),
+      targetFolder: path.join(sourceFolder, "_out"),
       verbose: false,
       plugins: [{
         name: "test-plugin",
@@ -100,7 +100,7 @@ test("readAbstracts: a transformFile hook can still queue jobs alongside transfo
           readFile: () => ({ abstract: { scanned: false }, metadata: {} }),
           transformFile: (abstract) => ({
             abstract: { scanned: true },
-            urls: [{ data: "https://example.com", runner: "text", destination: "page.html" }]
+            urls: [{ data: "https://example.com", runner: "text", target: "page.html" }]
           })
         }]
       }]

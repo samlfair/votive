@@ -24,7 +24,7 @@ test("readSources: a settings contribution is scoped to the source file's own fo
 
     const config = {
       sourceFolder,
-      destinationFolder: path.join(sourceFolder, "_out"),
+      targetFolder: path.join(sourceFolder, "_out"),
       verbose: false,
       plugins: [{
         name: "test-plugin",

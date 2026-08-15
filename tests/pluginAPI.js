@@ -24,7 +24,7 @@ test("plugin callbacks receive a restricted api instead of the full database", a
 
     const config = {
       sourceFolder,
-      destinationFolder: path.join(sourceFolder, "_out"),
+      targetFolder: path.join(sourceFolder, "_out"),
       verbose: false,
       plugins: [{
         name: "test-plugin",
@@ -38,8 +38,8 @@ test("plugin callbacks receive a restricted api instead of the full database", a
           // (the only cross-file read that's guaranteed ordering-safe)
           // still exercises api.target() against real, already-committed
           // data instead of racing readFile's per-file concurrency.
-          writeFile: (destination, settings, api) => {
-            if (destination.path === "a.html") seenAPI = api
+          writeFile: (target, settings, api) => {
+            if (target.path === "a.html") seenAPI = api
             return { data: "" }
           }
         }]
@@ -70,7 +70,7 @@ test("api.createTarget() creates a target, and api.target()/api.targets() see it
 
     const config = {
       sourceFolder,
-      destinationFolder: path.join(sourceFolder, "_out"),
+      targetFolder: path.join(sourceFolder, "_out"),
       verbose: false,
       plugins: [{
         name: "test-plugin",
@@ -79,7 +79,7 @@ test("api.createTarget() creates a target, and api.target()/api.targets() see it
           extensions: [".md", ".html"],
           format: "text",
           writeFile: () => ({ data: "" }),
-          readFile: (text, filePath, destinationPath, settings, api) => {
+          readFile: (text, filePath, targetPath, settings, api) => {
             api.createTarget({ path: "generated.html", abstract: { tag: "p" }, metadata: { generated: "yes" } })
             return { abstract: { tag: "p" }, metadata: {} }
           }

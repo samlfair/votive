@@ -40,7 +40,7 @@ test("bundle: buffer processing and URL fetches a plugin claims are both deferre
 
       const config = {
         sourceFolder,
-        destinationFolder: path.join(sourceFolder, "_out"),
+        targetFolder: path.join(sourceFolder, "_out"),
         verbose: false,
         plugins: [{
           name: "test-plugin",
@@ -63,7 +63,7 @@ test("bundle: buffer processing and URL fetches a plugin claims are both deferre
                 return {
                   abstract: {},
                   metadata: {},
-                  urls: [{ data: text.trim(), runner: "text", destination: "page.html", extension: ".md" }]
+                  urls: [{ data: text.trim(), runner: "text", target: "page.html", extension: ".md" }]
                 }
               }
             }
@@ -105,7 +105,7 @@ test("bundle: runFetches auto-triggers a rebuild that picks up the newly-staled 
 
       const config = {
         sourceFolder,
-        destinationFolder: path.join(sourceFolder, "_out"),
+        targetFolder: path.join(sourceFolder, "_out"),
         verbose: false,
         plugins: [{
           name: "test-plugin",
@@ -119,7 +119,7 @@ test("bundle: runFetches auto-triggers a rebuild that picks up the newly-staled 
               return {
                 abstract: { type: "page" },
                 metadata: {},
-                urls: [{ data: text.trim(), runner: "text", destination: "page.html", extension: ".md" }]
+                urls: [{ data: text.trim(), runner: "text", target: "page.html", extension: ".md" }]
               }
             }
           }]
@@ -154,7 +154,7 @@ test("bundle: runBuffers auto-triggers a rebuild that writes the newly-created b
 
     const config = {
       sourceFolder,
-      destinationFolder: path.join(sourceFolder, "_out"),
+      targetFolder: path.join(sourceFolder, "_out"),
       verbose: false,
       plugins: [{
         name: "test-plugin",
@@ -191,7 +191,7 @@ test("bundle: a target created via runBuffers() actually reaches the on-disk .vo
 
     const config = {
       sourceFolder,
-      destinationFolder: path.join(sourceFolder, "_out"),
+      targetFolder: path.join(sourceFolder, "_out"),
       verbose: false,
       plugins: [{
         name: "test-plugin",
@@ -235,7 +235,7 @@ test("bundle: config.databasePath overrides where .votive.db is written", async 
 
     const config = {
       sourceFolder,
-      destinationFolder: path.join(sourceFolder, "_out"),
+      targetFolder: path.join(sourceFolder, "_out"),
       databasePath: path.join(customDbDir, "custom.db"),
       verbose: false,
       plugins: [{

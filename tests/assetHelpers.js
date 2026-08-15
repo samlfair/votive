@@ -21,7 +21,7 @@ test("target.create records the source file path on a newly-created target", asy
 
     const config = {
       sourceFolder,
-      destinationFolder: path.join(sourceFolder, "_out"),
+      targetFolder: path.join(sourceFolder, "_out"),
       verbose: false,
       plugins: [{
         name: "test-plugin",
@@ -29,7 +29,7 @@ test("target.create records the source file path on a newly-created target", asy
         processors: [{
           extensions: [".pdf"],
           format: "buffer",
-          writeFile: (destination) => ({ data: destination.buffer() }),
+          writeFile: (target) => ({ data: target.buffer() }),
           readFile: () => ({ abstract: { kind: "pdf" }, metadata: {} })
         }]
       }]
@@ -44,7 +44,7 @@ test("target.create records the source file path on a newly-created target", asy
   })
 })
 
-test("writeFile's destination.buffer() reads the source file's raw bytes", async () => {
+test("writeFile's target.buffer() reads the source file's raw bytes", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "doc.pdf"), "raw-pdf-bytes")
 
@@ -52,7 +52,7 @@ test("writeFile's destination.buffer() reads the source file's raw bytes", async
 
     const config = {
       sourceFolder,
-      destinationFolder: path.join(sourceFolder, "_out"),
+      targetFolder: path.join(sourceFolder, "_out"),
       verbose: false,
       plugins: [{
         name: "test-plugin",
@@ -60,8 +60,8 @@ test("writeFile's destination.buffer() reads the source file's raw bytes", async
         processors: [{
           extensions: [".pdf"],
           format: "buffer",
-          writeFile: (destination) => {
-            writtenBuffer = destination.buffer()
+          writeFile: (target) => {
+            writtenBuffer = target.buffer()
             return { data: writtenBuffer }
           },
           readFile: () => ({ abstract: { kind: "pdf" }, metadata: {} })
@@ -82,7 +82,7 @@ test("writeFile's destination.buffer() reads the source file's raw bytes", async
   })
 })
 
-test("writeFile's destination.stream() opens a readable stream over the source file", async () => {
+test("writeFile's target.stream() opens a readable stream over the source file", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "movie.mp4"), "raw-video-bytes")
 
@@ -90,7 +90,7 @@ test("writeFile's destination.stream() opens a readable stream over the source f
 
     const config = {
       sourceFolder,
-      destinationFolder: path.join(sourceFolder, "_out"),
+      targetFolder: path.join(sourceFolder, "_out"),
       verbose: false,
       plugins: [{
         name: "test-plugin",
@@ -98,8 +98,8 @@ test("writeFile's destination.stream() opens a readable stream over the source f
         processors: [{
           extensions: [".mp4"],
           format: "buffer",
-          writeFile: async (destination) => {
-            for await (const chunk of destination.stream()) streamedChunks.push(chunk)
+          writeFile: async (target) => {
+            for await (const chunk of target.stream()) streamedChunks.push(chunk)
             return { data: Buffer.concat(streamedChunks) }
           },
           readFile: () => ({ abstract: { kind: "video" }, metadata: {} })
