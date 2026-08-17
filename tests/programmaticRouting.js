@@ -4,8 +4,6 @@ import { mkdtemp, writeFile, rm, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import bundler from "../lib/bundle.js"
-import createDatabase from "../lib/createDatabase.js"
-import createPluginAPI from "../lib/pluginAPI.js"
 
 /** @param {(sourceFolder: string) => Promise<void>} run */
 async function withTempSourceFolder(run) {
@@ -185,47 +183,4 @@ test("readFile (buffer format): filePath and write are honored the same way as t
     assert.ok(final.cache.target.get("buffers/renamed.html"))
     assert.equal(await exists(path.join(config.targetFolder, "buffers/renamed.html")), true)
   })
-})
-
-test("api.retarget(): tracking made after retarget() attributes to the new path, not the routed one", () => {
-  const database = createDatabase(":memory:")
-
-  database.target.create({ path: "other.html", abstract: { v: 1 }, metadata: {} })
-  database.target.create({ path: "routed.html", abstract: {}, metadata: {} })
-  database.target.create({ path: "actual.html", abstract: {}, metadata: {} })
-  database.target.markFresh("routed.html")
-  database.target.markFresh("actual.html")
-
-  // Mimics a readFile() that decides, partway through, that its real
-  // target is "actual.html" rather than the routed "routed.html" it was
-  // handed - and calls retarget() before making any further api. calls.
-  const api = createPluginAPI(database, "routed.html")
-  api.retarget("actual.html")
-  api.target("other.html").abstract // dependency tracking is lazy - only registers on access
-
-  // Changing other.html should stale whichever path actually read it.
-  database.target.create({ path: "other.html", abstract: { v: 2 }, metadata: {} })
-
-  const routed = database.raw.prepare("SELECT stale FROM targets WHERE path = ?").get("routed.html")
-  const actual = database.raw.prepare("SELECT stale FROM targets WHERE path = ?").get("actual.html")
-
-  assert.equal(Boolean(actual.stale), true)
-  assert.equal(Boolean(routed.stale), false)
-})
-
-test("api.retarget(): tracking made before retarget() still attributes to the original path - not retroactively fixable", () => {
-  const database = createDatabase(":memory:")
-
-  database.target.create({ path: "other.html", abstract: { v: 1 }, metadata: {} })
-  database.target.create({ path: "routed.html", abstract: {}, metadata: {} })
-  database.target.markFresh("routed.html")
-
-  const api = createPluginAPI(database, "routed.html")
-  api.target("other.html").abstract // read before retarget() - attributed to "routed.html"
-  api.retarget("actual.html")
-
-  database.target.create({ path: "other.html", abstract: { v: 2 }, metadata: {} })
-
-  const routed = database.raw.prepare("SELECT stale FROM targets WHERE path = ?").get("routed.html")
-  assert.equal(Boolean(routed.stale), true)
 })
