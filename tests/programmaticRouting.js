@@ -184,3 +184,45 @@ test("readFile (buffer format): filePath and write are honored the same way as t
     assert.equal(await exists(path.join(config.targetFolder, "buffers/renamed.html")), true)
   })
 })
+
+test("readFile: api calls made before deciding a filePath override still attribute to the final path", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "page.md"), "content")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        router: ({ name }) => ({ dir: [], name, ext: ".html" }),
+        processors: [{
+          extensions: [".md", ".html"],
+          format: "text",
+          writeFile: (target) => ({ data: `written:${target.path}` }),
+          readFile: (text, filePath, targetPath, settings, api) => {
+            // Self-created rather than cross-file, so there's no
+            // ordering hazard from readSources.js processing multiple
+            // files concurrently - other.html is guaranteed to exist by
+            // the time it's read back two lines down.
+            api.createTarget({ path: "other.html", abstract: { v: 1 }, metadata: {} })
+            // Read *before* deciding to relocate itself - readSources.js
+            // queues this against an accumulator and only dispatches it
+            // for real once the final (overridden) path is known.
+            api.target("other.html")
+            return { abstract: {}, metadata: {}, filePath: "moved.html" }
+          }
+        }]
+      }]
+    }
+
+    const queue = await bundler(config)
+    const first = await queue()
+
+    assert.ok(first.cache.target.get("moved.html"))
+
+    const deps = first.cache.dependency.getAllByTarget("other.html")
+    assert.ok(deps.some(d => d.dependent === "moved.html"), "expected moved.html to depend on other.html")
+    assert.ok(!deps.some(d => d.dependent === "page.html"), "the pre-override routed path should not have been recorded")
+  })
+})
