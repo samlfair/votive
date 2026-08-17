@@ -122,3 +122,25 @@ test("cleanupDatabase: prunes a dependency row whose dependent no longer exists"
     assert.equal(remaining, undefined)
   })
 })
+
+test("cleanupDatabase: doesn't crash on the route()-less \"0\" placeholder target", async () => {
+  // Regression test: targets.path used to be declared STRING, which
+  // SQLite gives NUMERIC affinity (not a recognized affinity keyword -
+  // see the comment on the targets table in createDatabase.js). The
+  // literal path "0" (route()'s placeholder for a file with no router,
+  // e.g. settings.md) round-tripped as the *integer* 0, and
+  // path.join(targetFolder, 0) threw - reproduced live against a real
+  // build before the STRING -> TEXT fix.
+  await withFolders(async (sourceFolder, targetFolder) => {
+    const sourcePath = path.join(sourceFolder, "settings.md")
+    await writeFile(sourcePath, "content")
+
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "0", abstract: {}, metadata: {}, source: sourcePath })
+
+    const row = database.raw.prepare("SELECT path, typeof(path) as t FROM targets WHERE path = '0'").get()
+    assert.equal(row.t, "text")
+
+    assert.doesNotThrow(() => cleanupDatabase({ sourceFolder, targetFolder, verbose: false }, database))
+  })
+})
