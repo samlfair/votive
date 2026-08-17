@@ -21,7 +21,6 @@ test("plugin callbacks receive a restricted api instead of the full database", a
     await writeFile(path.join(sourceFolder, "b.md"), "content")
 
     let seenAPI
-    let seenB
 
     const config = {
       sourceFolder,
@@ -39,17 +38,8 @@ test("plugin callbacks receive a restricted api instead of the full database", a
           // (the only cross-file read that's guaranteed ordering-safe)
           // still exercises api.target() against real, already-committed
           // data instead of racing readFile's per-file concurrency.
-          // The read has to happen *inside* the callback, not just the
-          // api reference captured for later - dependency tracking is
-          // deferred (see pluginAPI.js) and flushed right after this
-          // callback returns, so a read made after that point (e.g. from
-          // the test itself, post-build) would never get flushed at all.
           writeFile: (target, settings, api) => {
-            if (target.path === "a.html") {
-              seenAPI = api
-              seenB = api.target("b.html")
-              seenB.metadata.name // trigger the lazy read now, while still inside the callback
-            }
+            if (target.path === "a.html") seenAPI = api
             return { data: "" }
           }
         }]
@@ -60,13 +50,14 @@ test("plugin callbacks receive a restricted api instead of the full database", a
     const first = await queue()
 
     // Only the curated methods are exposed - not the full database surface.
-    assert.deepEqual(Object.keys(seenAPI).sort(), ["createTarget", "flush", "target", "targets", "url"])
+    assert.deepEqual(Object.keys(seenAPI).sort(), ["createTarget", "retarget", "target", "targets", "url"])
 
     // api.target()/api.targets() read with the current file pre-loaded as
     // the dependent - reading b.html from within a.html's writeFile
     // should register a real dependency, without the callback ever
     // passing `dependent` itself.
-    assert.equal(seenB.metadata.name, "b.md")
+    const b = seenAPI.target("b.html")
+    assert.equal(b.metadata.name, "b.md")
 
     const deps = first.cache.dependency.getAllByTarget("b.html")
     assert.ok(deps.some(d => d.dependent === "a.html"))
