@@ -185,7 +185,7 @@ test("readFile (buffer format): filePath and write are honored the same way as t
   })
 })
 
-test("readFile: api calls made before deciding a filePath override still attribute to the final path", async () => {
+test("readFile: an api.url.create() call made before deciding a filePath override still attributes to the final path", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "page.md"), "content")
 
@@ -200,16 +200,11 @@ test("readFile: api calls made before deciding a filePath override still attribu
           extensions: [".md", ".html"],
           format: "text",
           writeFile: (target) => ({ data: `written:${target.path}` }),
-          readFile: (text, filePath, targetPath, settings, api) => {
-            // Self-created rather than cross-file, so there's no
-            // ordering hazard from readSources.js processing multiple
-            // files concurrently - other.html is guaranteed to exist by
-            // the time it's read back two lines down.
-            api.createTarget({ path: "other.html", abstract: { v: 1 }, metadata: {} })
-            // Read *before* deciding to relocate itself - readSources.js
+          readFile: (text, filePath, targetPath, api) => {
+            // Linked *before* deciding to relocate itself - readSources.js
             // queues this against an accumulator and only dispatches it
             // for real once the final (overridden) path is known.
-            api.target("other.html")
+            api.url.create("https://example.com/thing", { title: "Thing" })
             return { abstract: {}, metadata: {}, filePath: "moved.html" }
           }
         }]
@@ -221,8 +216,8 @@ test("readFile: api calls made before deciding a filePath override still attribu
 
     assert.ok(first.cache.target.get("moved.html"))
 
-    const deps = first.cache.dependency.getAllByTarget("other.html")
-    assert.ok(deps.some(d => d.dependent === "moved.html"), "expected moved.html to depend on other.html")
+    const deps = first.cache.dependency.getAllByTarget("https://example.com/thing")
+    assert.ok(deps.some(d => d.dependent === "moved.html"), "expected moved.html to depend on the linked URL")
     assert.ok(!deps.some(d => d.dependent === "page.html"), "the pre-override routed path should not have been recorded")
   })
 })

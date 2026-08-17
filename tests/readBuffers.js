@@ -126,6 +126,54 @@ test("readBuffers: deferred buffer processing", async (t) => {
     })
   })
 
+  await t.test("api.url.create() calls made in readFile (buffer format) attribute to the final path, and survive a cache hit", async () => {
+    await withTempSourceFolder(async (sourceFolder) => {
+      await writeFile(path.join(sourceFolder, "photo.bin"), "binary content")
+
+      const database = createDatabase(":memory:")
+      let readFileCalls = 0
+
+      const processors = [{
+        plugin: { name: "test-buffer-plugin" },
+        processor: {
+          extensions: [".bin"],
+          format: "buffer",
+          readFile(filePath, api) {
+            readFileCalls++
+            // Linked before deciding to relocate itself - readBuffers.js
+            // queues this against an accumulator and only dispatches it
+            // for real once the final (overridden) path is known.
+            api.url.create("https://example.com/photo", { title: "Photo" })
+            return { abstract: {}, metadata: {}, filePath: "moved.bin" }
+          }
+        }
+      }]
+
+      const config = { sourceFolder, targetFolder: path.join(sourceFolder, "_out"), plugins: [] }
+
+      const first = await readSources(config, database, processors)
+      await readBuffers(first.sources, config, database).runBuffers()
+
+      assert.equal(readFileCalls, 1)
+      assert.ok(database.target.get("moved.bin"))
+
+      const deps = database.dependency.getAllByTarget("https://example.com/photo")
+      assert.ok(deps.some(d => d.dependent === "moved.bin"), "expected moved.bin to depend on the linked URL")
+
+      // Force the source to look "new" again without touching the cache -
+      // same technique the earlier cache-hit test uses - to confirm the
+      // accumulated call replays correctly from the cached result too,
+      // without re-invoking readFile.
+      database.source.delete(path.join(sourceFolder, "photo.bin"))
+      const second = await readSources(config, database, processors)
+      await readBuffers(second.sources, config, database).runBuffers()
+
+      assert.equal(readFileCalls, 1)
+      const depsAfterCacheHit = database.dependency.getAllByTarget("https://example.com/photo")
+      assert.ok(depsAfterCacheHit.some(d => d.dependent === "moved.bin"))
+    })
+  })
+
   await t.test("config.cacheDirectory overrides where the buffer cache is written", async () => {
     await withTempSourceFolder(async (sourceFolder) => {
       await writeFile(path.join(sourceFolder, "photo.bin"), "binary content")

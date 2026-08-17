@@ -64,7 +64,7 @@ test("plugin callbacks receive a restricted api instead of the full database", a
   })
 })
 
-test("api.createTarget() creates a target, and api.target()/api.targets() see it", async () => {
+test("api.createTarget() from readFile() persists a new target", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "post.md"), "content")
 
@@ -79,7 +79,7 @@ test("api.createTarget() creates a target, and api.target()/api.targets() see it
           extensions: [".md", ".html"],
           format: "text",
           writeFile: () => ({ data: "" }),
-          readFile: (text, filePath, targetPath, settings, api) => {
+          readFile: (text, filePath, targetPath, api) => {
             api.createTarget({ path: "generated.html", abstract: { tag: "p" }, metadata: { generated: "yes" } })
             return { abstract: { tag: "p" }, metadata: {} }
           }

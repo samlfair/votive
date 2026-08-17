@@ -29,7 +29,7 @@ test("writeTargets: a target with an empty abstract is still written - the plugi
         processors: [{
           extensions: [".md", ".html"],
           format: "text",
-          readFile: (text, filePath, targetPath, settings, api) => {
+          readFile: (text, filePath, targetPath, api) => {
             // Deliberately empty abstract, matching the shape a
             // dispatch-by-path writer (like xml/index.js's sitemap/feed
             // targets) uses today - it never reads `abstract` at all.
