@@ -50,7 +50,7 @@ test("plugin callbacks receive a restricted api instead of the full database", a
     const first = await queue()
 
     // Only the curated methods are exposed - not the full database surface.
-    assert.deepEqual(Object.keys(seenAPI).sort(), ["createTarget", "target", "targets", "url"])
+    assert.deepEqual(Object.keys(seenAPI).sort(), ["createTarget", "retarget", "target", "targets", "url"])
 
     // api.target()/api.targets() read with the current file pre-loaded as
     // the dependent - reading b.html from within a.html's writeFile
