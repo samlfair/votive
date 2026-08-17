@@ -187,45 +187,75 @@ test("readFile (buffer format): filePath and write are honored the same way as t
   })
 })
 
-test("api.retarget(): tracking made after retarget() attributes to the new path, not the routed one", () => {
+test("createPluginAPI: reads are deferred - nothing is written until flush()", () => {
   const database = createDatabase(":memory:")
-
   database.target.create({ path: "other.html", abstract: { v: 1 }, metadata: {} })
-  database.target.create({ path: "routed.html", abstract: {}, metadata: {} })
-  database.target.create({ path: "actual.html", abstract: {}, metadata: {} })
-  database.target.markFresh("routed.html")
-  database.target.markFresh("actual.html")
 
-  // Mimics a readFile() that decides, partway through, that its real
-  // target is "actual.html" rather than the routed "routed.html" it was
-  // handed - and calls retarget() before making any further api. calls.
-  const api = createPluginAPI(database, "routed.html")
-  api.retarget("actual.html")
-  api.target("other.html").abstract // dependency tracking is lazy - only registers on access
+  const api = createPluginAPI(database)
+  api.target("other.html").abstract // triggers the lazy getter, but only records - doesn't write yet
 
-  // Changing other.html should stale whichever path actually read it.
-  database.target.create({ path: "other.html", abstract: { v: 2 }, metadata: {} })
-
-  const routed = database.raw.prepare("SELECT stale FROM targets WHERE path = ?").get("routed.html")
-  const actual = database.raw.prepare("SELECT stale FROM targets WHERE path = ?").get("actual.html")
-
-  assert.equal(Boolean(actual.stale), true)
-  assert.equal(Boolean(routed.stale), false)
+  assert.deepEqual(database.dependency.getAllByTarget("other.html"), [])
 })
 
-test("api.retarget(): tracking made before retarget() still attributes to the original path - not retroactively fixable", () => {
+test("createPluginAPI: flush() attributes every recorded read to whatever dependent it's given, regardless of when the read happened", () => {
   const database = createDatabase(":memory:")
 
   database.target.create({ path: "other.html", abstract: { v: 1 }, metadata: {} })
-  database.target.create({ path: "routed.html", abstract: {}, metadata: {} })
-  database.target.markFresh("routed.html")
+  database.target.create({ path: "actual.html", abstract: {}, metadata: {} })
+  database.target.markFresh("actual.html")
 
-  const api = createPluginAPI(database, "routed.html")
-  api.target("other.html").abstract // read before retarget() - attributed to "routed.html"
-  api.retarget("actual.html")
+  // Mimics a readFile() that doesn't decide its real target ("actual.html")
+  // until after it's already made an api.target() call - no equivalent of
+  // the old api.retarget() needed, every read this API makes stays
+  // deferred until flush() regardless of ordering within the callback.
+  const api = createPluginAPI(database)
+  api.target("other.html").abstract
+  api.flush("actual.html")
 
   database.target.create({ path: "other.html", abstract: { v: 2 }, metadata: {} })
 
-  const routed = database.raw.prepare("SELECT stale FROM targets WHERE path = ?").get("routed.html")
-  assert.equal(Boolean(routed.stale), true)
+  const actual = database.raw.prepare("SELECT stale FROM targets WHERE path = ?").get("actual.html")
+  assert.equal(Boolean(actual.stale), true)
+})
+
+test("readFile: a filePath override correctly redirects dependency tracking to the final path, automatically", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "page.md"), "content")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        router: ({ name }) => ({ dir: [], name, ext: ".html" }),
+        processors: [{
+          extensions: [".md", ".html"],
+          format: "text",
+          writeFile: (target) => ({ data: `written:${target.path}` }),
+          readFile: (text, filePath, targetPath, settings, api) => {
+            // Self-created rather than cross-file, so there's no
+            // ordering hazard from readSources.js processing multiple
+            // files concurrently - other.html is guaranteed to exist by
+            // the time it's read back two lines down.
+            api.createTarget({ path: "other.html", abstract: { v: 1 }, metadata: {} })
+            // Read *before* deciding to relocate itself - no
+            // api.retarget()-equivalent call needed for this to
+            // attribute correctly once flushed.
+            api.target("other.html").abstract
+            return { abstract: {}, metadata: {}, filePath: "moved.html" }
+          }
+        }]
+      }]
+    }
+
+    const queue = await bundler(config)
+    const first = await queue()
+
+    assert.ok(first.cache.target.get("moved.html"))
+
+    const deps = first.cache.dependency.getAllByTarget("other.html")
+    assert.ok(deps.some(d => d.dependent === "moved.html"), "expected moved.html to depend on other.html")
+    assert.ok(!deps.some(d => d.dependent === "page.html"), "the pre-override routed path should not have been recorded")
+  })
 })
