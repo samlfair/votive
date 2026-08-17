@@ -265,3 +265,37 @@ test("bundle: config.databasePath overrides where .votive.db is written", async 
     await assert.rejects(() => import("node:fs/promises").then(fs => fs.stat(path.join(sourceFolder, ".votive.db"))))
   })
 })
+
+test("bundle: a plugin with no processors at all doesn't crash the build", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "page.md"), "content")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [
+        // No `processors` at all - plugin.processors && plugin.processors.map(...)
+        // short-circuits to a bare `undefined`, which flatMap doesn't drop the
+        // way it drops an empty array, so this used to leave `undefined` as a
+        // literal entry in the flattened processors list.
+        { name: "no-op-plugin" },
+        {
+          name: "test-plugin",
+          router: () => ({ dir: [], name: "page", ext: ".html" }),
+          processors: [{
+            extensions: [".md", ".html"],
+            format: "text",
+            writeFile: () => ({ data: "" }),
+            readFile: () => ({ abstract: {}, metadata: {} })
+          }]
+        }
+      ]
+    }
+
+    const queue = await bundler(config)
+    const { cache } = await queue()
+
+    assert.ok(cache.target.get("page.html"))
+  })
+})
