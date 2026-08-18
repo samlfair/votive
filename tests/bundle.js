@@ -23,6 +23,20 @@ async function withServer(handler) {
   return { baseUrl: `http://127.0.0.1:${server.address().port}`, close: () => new Promise(resolve => server.close(resolve)) }
 }
 
+test("bundle: throws when sourceFolder is relative instead of silently resolving against cwd", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    const config = {
+      sourceFolder: path.relative(process.cwd(), sourceFolder),
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [],
+    }
+
+    const queue = await bundler(config)
+    await assert.rejects(() => queue(), /sourceFolder must be an absolute/)
+  })
+})
+
 test("bundle: buffer processing and URL fetches a plugin claims are both deferred, returned from calling the queue", async () => {
   let fetchServerHits = 0
   const { baseUrl, close } = await withServer((req, res) => {
