@@ -118,7 +118,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
 
       // Force the source to look "new" again without touching the cache,
       // to isolate the cache-hit path from readSources' own staleness check.
-      database.source.delete(path.join(sourceFolder, "photo.bin"))
+      database.source.delete("photo.bin")
       const second = await readSources(config, database, processors)
       await readBuffers(second.sources, config, database).runBuffers()
 
@@ -164,7 +164,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
       // same technique the earlier cache-hit test uses - to confirm the
       // accumulated call replays correctly from the cached result too,
       // without re-invoking readFile.
-      database.source.delete(path.join(sourceFolder, "photo.bin"))
+      database.source.delete("photo.bin")
       const second = await readSources(config, database, processors)
       await readBuffers(second.sources, config, database).runBuffers()
 

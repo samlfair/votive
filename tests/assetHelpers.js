@@ -40,7 +40,7 @@ test("target.create records the source file path on a newly-created target", asy
     await first.runBuffers()
 
     const target = first.cache.target.get("doc.pdf")
-    assert.equal(target.source, path.join(sourceFolder, "doc.pdf"))
+    assert.equal(target.source, "doc.pdf")
   })
 })
 
