@@ -9,14 +9,14 @@
 
 ### Priorities
 
-- [ ] Improve buffer handling
-- [ ] Flesh out get-many targets logic
-- [ ] Add get-url logic
+- [x] Improve buffer handling
+- [x] Flesh out get-many targets logic
+- [x] Add get-url logic
 
 ### More
 
-- [ ] Rename jobs and paths
-- [ ] Folders (see spec below)
+- [x] Rename jobs and paths
+- [x] Folders (see spec below)
 - [x] File deletion handling
 
 ## Project: Folders
