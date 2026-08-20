@@ -128,7 +128,12 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
 
     // A change at "blog" (a different ancestor than the one read, and already
     // a known label there once it exists at root) should NOT stale nav.html.
-    database.setting.accumulate("blog", { theme: "Dark" }, "settings.md")
+    // A distinct source, matching what a real second file (blog/settings.md)
+    // would actually be - reusing "settings.md" here would make this
+    // accumulate() call's own cleanup step (see tasks/folder-staling-bug.md)
+    // scan for and incidentally touch root's "settings.md"-contributed row
+    // too, since deleteBySource() isn't folder-scoped.
+    database.setting.accumulate("blog", { theme: "Dark" }, "blog/settings.md")
     assert.equal(isStale(database, "nav.html"), false)
 
     // A change at "" (root, the one actually read) should stale it.
@@ -145,26 +150,37 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
     const settings = database.setting.getByFolder("blog/travel", "nav.html")
     settings.theme.map(v => v) // touches every index, not just one
 
-    database.setting.accumulate("blog", { theme: "Dark" }, "settings.md")
+    // Distinct source, matching a real blog/settings.md file - see the
+    // identical note in the previous test.
+    database.setting.accumulate("blog", { theme: "Dark" }, "blog/settings.md")
     assert.equal(isStale(database, "nav.html"), true)
   })
 
   await t.test("getByFolder: a change to a different, already-known label does not stale a dependent that only read another label", () => {
     const database = createDatabase(":memory:")
     database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
-    database.setting.accumulate("", { theme: "Initial", stylesheets: "reset.css" }, "settings.md")
+    database.setting.accumulate("", { theme: "Initial" }, "settings.md")
+    // A separate source for stylesheets, never touching "theme" at all -
+    // accumulate() re-stales every label it touches on every call
+    // regardless of whether the value actually changed (unrelated,
+    // pre-existing behavior - not something to route around here), so
+    // re-including "theme" in the second call below would stale nav.html
+    // for a reason unrelated to what this test is actually checking.
+    database.setting.accumulate("", { stylesheets: "reset.css" }, "a.css")
     database.target.markFresh("nav.html")
 
     database.setting.getByFolder("", "nav.html").theme[0]
 
-    database.setting.accumulate("", { stylesheets: "typography.css" }, "settings.md") // stylesheets already known - a plain update, not a first appearance
+    database.setting.accumulate("", { stylesheets: "typography.css" }, "a.css") // stylesheets already known - a plain update, not a first appearance
     assert.equal(isStale(database, "nav.html"), false)
   })
 
   await t.test("getByFolder: Object.keys()/for-in/spread list every label set anywhere in the ancestor chain", () => {
     const database = createDatabase(":memory:")
     database.setting.accumulate("", { title: "My Site" }, "settings.md")
-    database.setting.accumulate("blog", { layout: "post" }, "settings.md")
+    // Distinct source, matching a real blog/settings.md file - see the
+    // identical note further up this file.
+    database.setting.accumulate("blog", { layout: "post" }, "blog/settings.md")
 
     const settings = database.setting.getByFolder("blog/2024")
 
@@ -237,5 +253,72 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
 
     assert.equal(isStale(database, "blog/index.html"), false)
     assert.equal(isStale(database, "blog/travel/index.html"), false)
+  })
+
+  // tasks/folder-staling-bug.md: a source going from "contributes X" to
+  // "contributes nothing" (or "contributes everything except X") has to
+  // be reflected immediately - not deferred, and not silently dropped
+  // just because the caller happened to skip calling accumulate() when
+  // it had nothing new to say.
+
+  await t.test("accumulate: a source that stops contributing entirely removes everything it contributed and stales real dependents", () => {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
+    database.setting.accumulate("blog", { theme: "Dark", stylesheets: "reset.css" }, "blog/settings.md")
+    database.target.markFresh("nav.html")
+
+    database.setting.getByFolder("blog", "nav.html").theme[1] // index 1 = "blog" itself (folderAncestors("blog") is ["", "blog"])
+
+    database.setting.accumulate("blog", {}, "blog/settings.md") // settings.md deleted, or its frontmatter emptied entirely
+
+    assert.deepEqual(database.setting.getByFolder("blog").theme, undefined)
+    assert.deepEqual(database.setting.getByFolder("blog").stylesheets, undefined)
+    assert.equal(isStale(database, "nav.html"), true)
+  })
+
+  await t.test("accumulate: a source that drops one label while keeping another only stales the dropped label's dependents", () => {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "theme-reader.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "stylesheets-reader.html", abstract: {}, metadata: {} })
+    database.setting.accumulate("blog", { theme: "Dark", stylesheets: "reset.css" }, "blog/settings.md")
+    database.target.markFresh("theme-reader.html")
+    database.target.markFresh("stylesheets-reader.html")
+
+    database.setting.getByFolder("blog", "theme-reader.html").theme[1] // index 1 = "blog" itself
+    database.setting.getByFolder("blog", "stylesheets-reader.html").stylesheets[1]
+
+    database.setting.accumulate("blog", { stylesheets: "reset.css" }, "blog/settings.md") // theme: dropped, stylesheets: unchanged
+
+    assert.deepEqual(database.setting.getByFolder("blog").theme, undefined)
+    assert.equal(isStale(database, "theme-reader.html"), true)
+    // stylesheets-reader.html reads a label that's still present - accumulate()
+    // still re-touches it every call regardless of value equality (same
+    // pre-existing behavior noted above), so it goes stale too, just not
+    // for the reason a naive "nothing changed" read would suggest.
+    assert.equal(isStale(database, "stylesheets-reader.html"), true)
+  })
+
+  await t.test("accumulate: dropping a label entirely does not resurrect it as a fresh 'first appearance' if re-added later", () => {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "blog/index.html", abstract: {}, metadata: {} })
+    database.target.markFresh("blog/index.html")
+
+    database.setting.accumulate("blog", { theme: "Dark" }, "blog/settings.md") // first appearance - stales blog/index.html (under blog's subtree)
+    database.target.markFresh("blog/index.html")
+
+    database.setting.accumulate("blog", {}, "blog/settings.md") // dropped
+    database.target.markFresh("blog/index.html")
+
+    database.setting.accumulate("blog", { theme: "Light" }, "blog/settings.md") // re-added
+
+    // Still a real, if surprising, characteristic of the "known labels"
+    // check: it asks "does a live row exist anywhere in the ancestor
+    // chain right now", not "has this exact label ever existed before" -
+    // once dropped, a label's row is really gone, so re-adding it later
+    // is indistinguishable from a genuine first appearance and correctly
+    // re-triggers the coarse subtree sweep. Documented here as the
+    // actual, intentional behavior - not something this fix was trying
+    // to change.
+    assert.equal(isStale(database, "blog/index.html"), true)
   })
 })
