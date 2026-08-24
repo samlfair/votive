@@ -291,11 +291,32 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
 
     assert.deepEqual(database.setting.getByFolder("blog").theme, undefined)
     assert.equal(isStale(database, "theme-reader.html"), true)
-    // stylesheets-reader.html reads a label that's still present - accumulate()
-    // still re-touches it every call regardless of value equality (same
-    // pre-existing behavior noted above), so it goes stale too, just not
-    // for the reason a naive "nothing changed" read would suggest.
-    assert.equal(isStale(database, "stylesheets-reader.html"), true)
+    // stylesheets-reader.html reads a label that's still present *and
+    // unchanged* ("reset.css" both times) - accumulate() only stales
+    // real dependents when the value actually differs from what was
+    // already stored, not on every touch. See
+    // tasks/folder-staling-bug.md's follow-up fix.
+    assert.equal(isStale(database, "stylesheets-reader.html"), false)
+  })
+
+  await t.test("accumulate: re-contributing the identical value does not stale a dependent, but a real change does", () => {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "reader.html", abstract: {}, metadata: {} })
+    database.setting.accumulate("blog", { theme: "Dark" }, "blog/settings.md")
+    database.target.markFresh("reader.html")
+
+    database.setting.getByFolder("blog", "reader.html").theme[1] // index 1 = "blog" itself
+
+    // Same value, same source - simulates readFolders.js recomputing and
+    // re-calling accumulate() on a pass triggered by something unrelated.
+    database.setting.accumulate("blog", { theme: "Dark" }, "blog/settings.md")
+    assert.equal(isStale(database, "reader.html"), false)
+
+    database.target.markFresh("reader.html")
+
+    // A real change still correctly stales.
+    database.setting.accumulate("blog", { theme: "Light" }, "blog/settings.md")
+    assert.equal(isStale(database, "reader.html"), true)
   })
 
   await t.test("accumulate: dropping a label entirely does not resurrect it as a fresh 'first appearance' if re-added later", () => {
