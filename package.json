@@ -15,8 +15,7 @@
   "type": "module",
   "main": "index.js",
   "exports": {
-    ".": "./lib/bundle.js",
-    "./internals": "./lib/index.js"
+    ".": "./lib/bundle.js"
   },
   "scripts": {
     "test": "node --test --watch tests/*.js",
