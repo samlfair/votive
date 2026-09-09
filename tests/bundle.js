@@ -73,11 +73,11 @@ test("bundle: buffer processing and URL fetches a plugin claims are both deferre
               format: "text",
               writeFile: () => ({ data: "" }),
               readURL: (data) => ({ fetched: data }),
-              readFile(text) {
+              readFile(source) {
                 return {
                   abstract: {},
                   metadata: {},
-                  urls: [{ data: text.trim(), runner: "text", target: "page.html", extension: ".md" }]
+                  urls: [{ data: source.text.trim(), runner: "text", target: "page.html", extension: ".md" }]
                 }
               }
             }
@@ -129,11 +129,11 @@ test("bundle: runFetches auto-triggers a rebuild that picks up the newly-staled 
             format: "text",
             writeFile: () => { writeFileCalls++; return { data: "" } },
             readURL: (data) => ({ fetched: data }),
-            readFile(text) {
+            readFile(source) {
               return {
                 abstract: { type: "page" },
                 metadata: {},
-                urls: [{ data: text.trim(), runner: "text", target: "page.html", extension: ".md" }]
+                urls: [{ data: source.text.trim(), runner: "text", target: "page.html", extension: ".md" }]
               }
             }
           }]

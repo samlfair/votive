@@ -30,7 +30,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
         processor: {
           extensions: [".bin"],
           format: "buffer",
-          readFile(filePath) {
+          readFile(source) {
             readFileCalls++
             return { abstract: { kind: "photo" }, metadata: { width: 100 } }
           }
@@ -45,7 +45,9 @@ test("readBuffers: deferred buffer processing", async (t) => {
 
       const pending = sources.filter(s => s && s.readBuffer)
       assert.equal(pending.length, 1)
-      assert.equal(pending[0].sourceFilePath, path.join(sourceFolder, "photo.bin"))
+      // Project-relative, like every other path votive records or hands
+      // to a plugin - not path.join(sourceFolder, ...).
+      assert.equal(pending[0].sourcePath, "photo.bin")
     })
   })
 
@@ -61,7 +63,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
         processor: {
           extensions: [".bin"],
           format: "buffer",
-          readFile(filePath) {
+          readFile(source) {
             readFileCalls++
             return { abstract: { kind: "photo" }, metadata: { width: 100 } }
           }
@@ -126,7 +128,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
     })
   })
 
-  await t.test("api.url.create() calls made in readFile (buffer format) attribute to the final path, and survive a cache hit", async () => {
+  await t.test("api.url.create() calls made in readFile (buffer format) attribute to the routed path, and are skipped on a cache hit", async () => {
     await withTempSourceFolder(async (sourceFolder) => {
       await writeFile(path.join(sourceFolder, "photo.bin"), "binary content")
 
@@ -140,11 +142,8 @@ test("readBuffers: deferred buffer processing", async (t) => {
           format: "buffer",
           readFile(filePath, api) {
             readFileCalls++
-            // Linked before deciding to relocate itself - readBuffers.js
-            // queues this against an accumulator and only dispatches it
-            // for real once the final (overridden) path is known.
             api.url.create("https://example.com/photo", { title: "Photo" })
-            return { abstract: {}, metadata: {}, filePath: "moved.bin" }
+            return { abstract: {}, metadata: {} }
           }
         }
       }]
@@ -155,22 +154,27 @@ test("readBuffers: deferred buffer processing", async (t) => {
       await readBuffers(first.sources, config, database).runBuffers()
 
       assert.equal(readFileCalls, 1)
-      assert.ok(database.target.get("moved.bin"))
+      // No router in this config, so routing sends it to the "0"
+      // placeholder - the same path the sibling tests above assert on.
+      assert.ok(database.target.get("0"))
 
       const deps = database.dependency.getAllByTarget("https://example.com/photo")
-      assert.ok(deps.some(d => d.dependent === "moved.bin"), "expected moved.bin to depend on the linked URL")
+      assert.ok(deps.some(d => d.dependent === "0"), "expected the routed target to depend on the linked URL")
 
-      // Force the source to look "new" again without touching the cache -
-      // same technique the earlier cache-hit test uses - to confirm the
-      // accumulated call replays correctly from the cached result too,
-      // without re-invoking readFile.
-      database.source.delete("photo.bin")
-      const second = await readSources(config, database, processors)
-      await readBuffers(second.sources, config, database).runBuffers()
+      // The api is the real one now, called during readFile - so a cache
+      // hit, which doesn't run readFile at all, doesn't make the call
+      // either. Only the returned result is replayed. Pinned here so the
+      // limitation is deliberate rather than discovered; see the note in
+      // readBuffers.js's run().
+      // A fresh database against the same source folder: the on-disk
+      // cache still holds photo.bin's result, so readFile is skipped.
+      const reopened = createDatabase(":memory:")
+      const second = await readSources(config, reopened, processors)
+      await readBuffers(second.sources, config, reopened).runBuffers()
 
       assert.equal(readFileCalls, 1)
-      const depsAfterCacheHit = database.dependency.getAllByTarget("https://example.com/photo")
-      assert.ok(depsAfterCacheHit.some(d => d.dependent === "moved.bin"))
+      assert.ok(reopened.target.get("0"), "the cached result is still applied")
+      assert.equal(reopened.dependency.getAllByTarget("https://example.com/photo").length, 0)
     })
   })
 

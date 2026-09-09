@@ -32,7 +32,7 @@ test("plugin callbacks receive a restricted api instead of the full database", a
         processors: [{
           extensions: [".md", ".html"],
           format: "text",
-          readFile: (text, filePath) => ({ abstract: { tag: "p" }, metadata: { name: path.basename(filePath) } }),
+          readFile: (source) => ({ abstract: { tag: "p" }, metadata: { name: path.basename(source.path) } }),
           // writeFile runs after every target has already been created,
           // so reading b.html's own target from within a.html's write
           // (the only cross-file read that's guaranteed ordering-safe)
@@ -50,7 +50,7 @@ test("plugin callbacks receive a restricted api instead of the full database", a
     const first = await queue()
 
     // Only the curated methods are exposed - not the full database surface.
-    assert.deepEqual(Object.keys(seenAPI).sort(), ["createTarget", "target", "targets", "url"])
+    assert.deepEqual(Object.keys(seenAPI).sort(), ["createTarget", "target", "targetBySource", "targets", "url"])
 
     // api.target()/api.targets() read with the current file pre-loaded as
     // the dependent - reading b.html from within a.html's writeFile
@@ -79,7 +79,7 @@ test("api.createTarget() from readFile() persists a new target", async () => {
           extensions: [".md", ".html"],
           format: "text",
           writeFile: () => ({ data: "" }),
-          readFile: (text, filePath, targetPath, api) => {
+          readFile: (source, api) => {
             api.createTarget({ path: "generated.html", abstract: { tag: "p" }, metadata: { generated: "yes" } })
             return { abstract: { tag: "p" }, metadata: {} }
           }

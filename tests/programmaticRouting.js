@@ -25,7 +25,7 @@ async function exists(filePath) {
   }
 }
 
-test("readFile: a returned filePath overrides the routed targetFilePath", async () => {
+test("readFile: a returned filePath does not move the target - routing decides where it lands", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "page.md"), "content")
 
@@ -52,12 +52,15 @@ test("readFile: a returned filePath overrides the routed targetFilePath", async 
     const queue = await bundler(config)
     const { cache } = await queue()
 
-    assert.equal(cache.target.get("page.html"), undefined)
-    assert.ok(cache.target.get("custom/moved.html"))
+    // read() is handed the routed path and cannot rewrite it. A stray
+    // `filePath` in the returned object is inert, not an escape hatch.
+    assert.ok(cache.target.get("page.html"))
+    assert.equal(cache.target.get("custom/moved.html"), undefined)
 
     const written = await import("node:fs/promises")
-      .then(fs => fs.readFile(path.join(config.targetFolder, "custom/moved.html"), "utf-8"))
-    assert.equal(written, "written:custom/moved.html")
+      .then(fs => fs.readFile(path.join(config.targetFolder, "page.html"), "utf-8"))
+    assert.equal(written, "written:page.html")
+    assert.equal(await exists(path.join(config.targetFolder, "custom/moved.html")), false)
   })
 })
 
@@ -148,7 +151,7 @@ test("readFile: write can flip an existing target between virtual and written ac
   })
 })
 
-test("readFile (buffer format): filePath and write are honored the same way as text format", async () => {
+test("readFile (buffer format): a returned filePath does not move the target either", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "asset.bin"), "binary content")
 
@@ -179,13 +182,14 @@ test("readFile (buffer format): filePath and write are honored the same way as t
 
     const final = await queue()
 
-    assert.equal(final.cache.target.get("asset.html"), undefined)
-    assert.ok(final.cache.target.get("buffers/renamed.html"))
-    assert.equal(await exists(path.join(config.targetFolder, "buffers/renamed.html")), true)
+    assert.ok(final.cache.target.get("asset.html"))
+    assert.equal(final.cache.target.get("buffers/renamed.html"), undefined)
+    assert.equal(await exists(path.join(config.targetFolder, "asset.html")), true)
+    assert.equal(await exists(path.join(config.targetFolder, "buffers/renamed.html")), false)
   })
 })
 
-test("readFile: an api.url.create() call made before deciding a filePath override still attributes to the final path", async () => {
+test("readFile: an api.url.create() call attributes to the routed target path", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "page.md"), "content")
 
@@ -200,12 +204,12 @@ test("readFile: an api.url.create() call made before deciding a filePath overrid
           extensions: [".md", ".html"],
           format: "text",
           writeFile: (target) => ({ data: `written:${target.path}` }),
-          readFile: (text, filePath, targetPath, api) => {
-            // Linked *before* deciding to relocate itself - readSources.js
-            // queues this against an accumulator and only dispatches it
-            // for real once the final (overridden) path is known.
+          readFile: (source, api) => {
+            // The api is real and pre-bound to targetPath, so this runs
+            // immediately rather than being queued - the path it
+            // attributes to is settled before read() is even called.
             api.url.create("https://example.com/thing", { title: "Thing" })
-            return { abstract: {}, metadata: {}, filePath: "moved.html" }
+            return { abstract: {}, metadata: {} }
           }
         }]
       }]
@@ -214,10 +218,9 @@ test("readFile: an api.url.create() call made before deciding a filePath overrid
     const queue = await bundler(config)
     const first = await queue()
 
-    assert.ok(first.cache.target.get("moved.html"))
+    assert.ok(first.cache.target.get("page.html"))
 
     const deps = first.cache.dependency.getAllByTarget("https://example.com/thing")
-    assert.ok(deps.some(d => d.dependent === "moved.html"), "expected moved.html to depend on the linked URL")
-    assert.ok(!deps.some(d => d.dependent === "page.html"), "the pre-override routed path should not have been recorded")
+    assert.ok(deps.some(d => d.dependent === "page.html"), "expected page.html to depend on the linked URL")
   })
 })

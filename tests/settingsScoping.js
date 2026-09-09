@@ -36,12 +36,12 @@ test("readSources: a settings contribution is scoped to the source file's own fo
           extensions: [".md", ".html"],
           format: "text",
           writeFile: () => ({ data: "" }),
-          readFile: (text, filePath) => {
-            const isSettings = path.basename(filePath) === "settings.md"
+          readFile: (source) => {
+            const isSettings = path.basename(source.path) === "settings.md"
             return {
               abstract: {},
               metadata: {},
-              settings: isSettings ? { title: text } : undefined
+              settings: isSettings ? { title: source.text } : undefined
             }
           }
         }]
