@@ -892,3 +892,121 @@ test("entry point: config.log receives stage messages instead of console.info", 
     assert.ok(messages.some(m => m.message === "starting build"), `got ${JSON.stringify(messages)}`)
   })
 })
+
+test("incremental: build({changed}) stats only the named file", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "a.md"), "one")
+    await writeFile(path.join(sourceFolder, "b.md"), "two")
+    await writeFile(path.join(sourceFolder, "c.md"), "three")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => ({ data: source.text, metadata: {} }),
+          writeFile: (target) => ({ data: target.data ?? "" })
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    await site.build({ defer: false })
+
+    const fsPromises = await import("node:fs/promises")
+    const realStat = fsPromises.default.stat
+    const statted = []
+    fsPromises.default.stat = (target, ...rest) => { statted.push(String(target)); return realStat(target, ...rest) }
+
+    try {
+      await writeFile(path.join(sourceFolder, "a.md"), "one edited")
+      await site.build({ defer: false, changed: ["a.md"] })
+    } finally {
+      fsPromises.default.stat = realStat
+    }
+
+    const sourceStats = statted.filter(target => target.endsWith(".md"))
+    assert.ok(sourceStats.every(target => target.endsWith("a.md")),
+      `only a.md should be stat'd, got ${sourceStats.join(", ")}`)
+    assert.ok(sourceStats.length > 0, "a.md should have been stat'd")
+  })
+})
+
+test("incremental: build({deleted}) removes the target the deleted source produced", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "a.md"), "one")
+    await writeFile(path.join(sourceFolder, "b.md"), "two")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => ({ data: source.text, metadata: {} }),
+          writeFile: (target) => ({ data: target.data ?? "" })
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    const first = await site.build({ defer: false })
+    assert.ok(first.database.target.get("b.html"))
+
+    await rm(path.join(sourceFolder, "b.md"))
+    const second = await site.build({ defer: false, changed: [], deleted: ["b.md"] })
+
+    assert.equal(second.database.target.get("b.html"), undefined)
+  })
+})
+
+test("incremental: two build({changed}) calls during a build coalesce into one pass covering both", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "a.md"), "one")
+    await writeFile(path.join(sourceFolder, "b.md"), "two")
+
+    const seen = []
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => { seen.push(source.path); return { data: source.text, metadata: {} } },
+          writeFile: (target) => ({ data: target.data ?? "" })
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    await site.build({ defer: false })
+
+    await writeFile(path.join(sourceFolder, "a.md"), "one edited")
+    await writeFile(path.join(sourceFolder, "b.md"), "two edited")
+    seen.length = 0
+
+    // Issued back to back: the second arrives while the first is running,
+    // so its path must be merged into the trailing pass rather than
+    // dropped.
+    await Promise.all([
+      site.build({ defer: false, changed: ["a.md"] }),
+      site.build({ defer: false, changed: ["b.md"] })
+    ])
+
+    assert.ok(seen.includes("a.md"), `a.md should be read, got ${seen.join(", ")}`)
+    assert.ok(seen.includes("b.md"), `b.md should be read, got ${seen.join(", ")}`)
+  })
+})
