@@ -313,3 +313,100 @@ test("bundle: a plugin with no processors at all doesn't crash the build", async
     assert.ok(cache.target.get("page.html"))
   })
 })
+
+test("bundle: an existing on-disk database is opened in WAL mode and each build is one transaction", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "a.md"), "first")
+
+    const databasePath = path.join(sourceFolder, ".votive.db")
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      databasePath,
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+        processors: [{
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
+          writeFile: (target) => ({ data: target.abstract?.text ?? "" })
+        }]
+      }]
+    }
+
+    // First run: no database on disk, so this builds in memory and
+    // saveDB() writes .votive.db at the end.
+    const first = await bundler(config)
+    await first()
+
+    // Second bundler() opens that file. This is the path the dev server
+    // and the desktop app always take, and the one the pragmas are for.
+    await writeFile(path.join(sourceFolder, "a.md"), "second")
+    const second = await bundler(config)
+    const result = await second()
+
+    // `cache` is the database; entry-point-api.md renames it to `database`.
+    assert.equal(typeof result.cache, "object")
+
+    const { DatabaseSync } = await import("node:sqlite")
+    const reopened = new DatabaseSync(databasePath, { readOnly: true })
+    const [{ journal_mode: mode }] = reopened.prepare("PRAGMA journal_mode").all()
+    reopened.close()
+
+    assert.equal(mode.toLowerCase(), "wal")
+  })
+})
+
+test("bundle: a writeFile that throws rolls the build back, leaving the database as it was", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "a.md"), "first")
+
+    const databasePath = path.join(sourceFolder, ".votive.db")
+    /** @type {boolean} */
+    let explode = false
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      databasePath,
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+        processors: [{
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
+          writeFile: (target) => {
+            if (explode) throw new Error("plugin exploded")
+            return { data: target.abstract?.text ?? "" }
+          }
+        }]
+      }]
+    }
+
+    const first = await bundler(config)
+    await first()
+
+    const { DatabaseSync } = await import("node:sqlite")
+    const countRows = () => {
+      const reopened = new DatabaseSync(databasePath, { readOnly: true })
+      const [{ n }] = reopened.prepare("SELECT COUNT(*) AS n FROM targets").all()
+      reopened.close()
+      return n
+    }
+    const before = countRows()
+
+    // A new source file plus a throwing writeFile: without the rollback,
+    // b's target row would survive the failed build.
+    await writeFile(path.join(sourceFolder, "b.md"), "second")
+    explode = true
+
+    const second = await bundler(config)
+    await assert.rejects(() => second(), /plugin exploded/)
+
+    assert.equal(countRows(), before)
+  })
+})
