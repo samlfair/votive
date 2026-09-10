@@ -40,14 +40,14 @@ test("metadata values round-trip as real JS types, not JSON-encoded strings", as
     assertShape(target.metadata, "target.getStale")
   })
 
-  await t.test("target.getByFolder - empty filter path (buildGetManyEmptySQL)", () => {
+  await t.test("target.getByFolder - empty filter compiles to (1)", () => {
     const database = createDatabase(":memory:")
     database.target.create({ path: "a.html", abstract: {}, metadata: seedMetadata })
     const results = database.target.getByFolder({ query: {}, dependent: "d.html" })
     assertShape(results.find(t => t.path === "a.html").metadata, "getByFolder (empty)")
   })
 
-  await t.test("target.getByFolder - filter engine path (buildGetManySQL)", () => {
+  await t.test("target.getByFolder - compiled filter path (compileFilter)", () => {
     const database = createDatabase(":memory:")
     database.target.create({ path: "a.html", abstract: {}, metadata: seedMetadata })
     const results = database.target.getByFolder({ query: { active: true }, dependent: "d.html" })

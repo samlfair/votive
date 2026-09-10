@@ -202,4 +202,50 @@ test("target.getMany filters", async (t) => {
     assert.deepEqual(paths(database, {}), ["a.html"])
     stop()
   })
+  await t.test("! over a multi-key object is NOT(AND), not NOT(OR)", () => {
+    const database = createDatabase(":memory:")
+    seed(database, [
+      { path: "both.html", abstract: {}, metadata: { a: 1, b: 2 } },
+      { path: "onlya.html", abstract: {}, metadata: { a: 1, b: 9 } },
+      { path: "neither.html", abstract: {}, metadata: { a: 8, b: 9 } },
+    ])
+
+    // The previous implementation computed `1 - MAX(children)` - "no child
+    // satisfied" - and returned only neither.html.
+    assert.deepEqual(paths(database, { "!": { a: 1, b: 2 } }).sort(), ["neither.html", "onlya.html"])
+  })
+
+  await t.test("! over a | negates the whole disjunction", () => {
+    const database = createDatabase(":memory:")
+    seed(database, [
+      { path: "both.html", abstract: {}, metadata: { a: 1, b: 2 } },
+      { path: "onlya.html", abstract: {}, metadata: { a: 1, b: 9 } },
+      { path: "neither.html", abstract: {}, metadata: { a: 8, b: 9 } },
+    ])
+
+    assert.deepEqual(paths(database, { "!": { "|": [{ a: 1 }, { b: 2 }] } }), ["neither.html"])
+  })
+
+  await t.test("nesting deeper than six levels is no longer truncated", () => {
+    const database = createDatabase(":memory:")
+    seed(database, [
+      { path: "deep.html", abstract: {}, metadata: { a: { b: { c: { d: { e: { f: { g: 1 } } } } } } } },
+      { path: "shallow.html", abstract: {}, metadata: { a: { b: 1 } } },
+    ])
+
+    // MAX_FILTER_DEPTH was 6, and anything below it was silently ignored -
+    // so this filter used to match both rows.
+    assert.deepEqual(paths(database, { a: { b: { c: { d: { e: { f: { g: 1 } } } } } } }), ["deep.html"])
+  })
+
+  await t.test("all against a scalar field treats it as a one-element array", () => {
+    const database = createDatabase(":memory:")
+    seed(database, [
+      { path: "a.html", abstract: {}, metadata: { status: "published" } },
+      { path: "b.html", abstract: {}, metadata: { status: "draft" } },
+    ])
+
+    assert.deepEqual(paths(database, { status: ["published"] }), ["a.html"])
+  })
+
 })
