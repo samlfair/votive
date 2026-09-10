@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import http from "node:http"
-import { mkdtemp, writeFile, rm } from "node:fs/promises"
+import { mkdtemp, writeFile, rm, readFile, mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import bundler from "../lib/bundle.js"
@@ -408,5 +408,202 @@ test("bundle: a writeFile that throws rolls the build back, leaving the database
     await assert.rejects(() => second(), /plugin exploded/)
 
     assert.equal(countRows(), before)
+  })
+})
+
+test("hooks: a readFolder that returns {} doesn't crash the build", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "a.md"), "hello")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+        processors: [{
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
+          // The whole point: no urls, no targets, no settings.
+          readFolder: () => ({}),
+          writeFile: (target) => ({ data: target.abstract?.text ?? "" })
+        }]
+      }]
+    }
+
+    const step = await bundler(config)
+    await step()
+  })
+})
+
+test("hooks: a readFolder that returns nothing at all doesn't crash the build", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "a.md"), "hello")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+        processors: [{
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
+          readFolder: () => undefined,
+          writeFile: (target) => ({ data: target.abstract?.text ?? "" })
+        }]
+      }]
+    }
+
+    const step = await bundler(config)
+    await step()
+  })
+})
+
+test("hooks: a readFolder returning urls but no targets still has its urls fetched", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    // A *subfolder*, deliberately: the root branch always pushed its urls,
+    // but the per-folder branch only returned them when `targets` was also
+    // truthy, so a readFolder producing urls alone had them dropped.
+    await mkdir(path.join(sourceFolder, "blog"))
+    await writeFile(path.join(sourceFolder, "blog", "a.md"), "hello")
+
+    /** @type {string[]} */
+    const fetched = []
+    const server = await withServer((req, res) => {
+      fetched.push(req.url)
+      res.writeHead(200, { "content-type": "text/plain" })
+      res.end("ok")
+    })
+
+    try {
+      const config = {
+        sourceFolder,
+        targetFolder: path.join(sourceFolder, "_out"),
+        verbose: false,
+        plugins: [{
+          name: "test-plugin",
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+          processors: [{
+            extensions: [".md", ".html"],
+            format: "text",
+            readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
+            // urls, deliberately with no `targets` alongside them.
+            // Note the trailing slash: readFolder receives "blog/", not "blog".
+            readFolder: (folderPath) =>
+              folderPath.startsWith("blog") ? { urls: [{ data: `${server.baseUrl}/from-folder` }] } : {},
+            readURL: async (response) => ({ body: await response.text() }),
+            writeFile: (target) => ({ data: target.abstract?.text ?? "" })
+          }]
+        }]
+      }
+
+      const step = await bundler(config)
+      const result = await step()
+      if (result.runFetches) await result.runFetches()
+
+      assert.deepEqual(fetched, ["/from-folder"])
+    } finally {
+      await server.close()
+    }
+  })
+})
+
+test("hooks: a writeFile returning nothing leaves the target alone instead of deleting it", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "a.md"), "hello")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+        processors: [{
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
+          // No return at all - used to mean "delete this target".
+          writeFile: () => undefined
+        }]
+      }]
+    }
+
+    const step = await bundler(config)
+    const result = await step()
+
+    assert.ok(result.cache.target.get("a.html"), "the target row should survive a writeFile that returns nothing")
+  })
+})
+
+test("hooks: a writeFile returning { delete: true } removes the target and its file", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "a.md"), "hello")
+
+    /** @type {boolean} */
+    let remove = false
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+        processors: [{
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
+          writeFile: (target) => remove ? { delete: true } : { data: target.abstract?.text ?? "" }
+        }]
+      }]
+    }
+
+    const step = await bundler(config)
+    const first = await step()
+    assert.ok(first.cache.target.get("a.html"))
+
+    // Force another write pass over the same target, this time deleting.
+    remove = true
+    first.cache.target.markStale("a.html")
+    const second = await step()
+
+    assert.equal(second.cache.target.get("a.html"), undefined)
+  })
+})
+
+test("hooks: a target whose output is an empty string is written and marked fresh", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "a.md"), "hello")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+        processors: [{
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
+          writeFile: () => ({ data: "" })
+        }]
+      }]
+    }
+
+    const step = await bundler(config)
+    const result = await step()
+
+    // Written despite being empty...
+    const written = await readFile(path.join(sourceFolder, "_out", "a.html"), "utf-8")
+    assert.equal(written, "")
+
+    // ...and marked fresh, so it isn't rebuilt forever.
+    assert.deepEqual(result.cache.target.getStale().map(t => t.path), [])
   })
 })
