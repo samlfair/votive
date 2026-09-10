@@ -113,7 +113,7 @@ test("bundler: a slow deferred runBuffers() doesn't block a concurrent foregroun
     const first = await queue()
 
     // Fire the slow buffer analysis without awaiting it, mirroring how
-    // voot's file-watcher handler calls runBuffers()/runFetches(): this
+    // the file-watcher handler calls runBuffers()/runFetches(): this
     // must not block a concurrent foreground edit's own queue() call.
     const runBuffersPromise = first.runBuffers()
 

@@ -2,7 +2,7 @@
 
 *File processor*
 
-- Powers [Voot](https://github.com/samlfair/voot)
+- Includes the dev server (`startServer`), formerly the separate `voot` package
 - Bundles [Vowel](https://github.com/samlfair/vowel)
 
 ## Roadmap
