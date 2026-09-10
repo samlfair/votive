@@ -21,7 +21,7 @@ function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-test("bundler: step() coalesces concurrent callers into a single trailing pass instead of running bundle() concurrently or dropping requests", async () => {
+test("bundler: site.build({ defer: false }) coalesces concurrent callers into a single trailing pass instead of running bundle() concurrently or dropping requests", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     let readFileCalls = 0
 
@@ -44,21 +44,21 @@ test("bundler: step() coalesces concurrent callers into a single trailing pass i
       }]
     }
 
-    const queue = await bundler(config)
+    const site = await bundler(config)
 
     // Start a build for a.md, then - before anything yields back to
-    // it (writeFileSync and calling queue() are both synchronous up to
-    // their first internal await) - add a second file and call queue()
-    // twice more. Because step() sets `running` synchronously before
+    // it (writeFileSync and calling site.build({ defer: false }) are both synchronous up to
+    // their first internal await) - add a second file and call site.build({ defer: false })
+    // twice more. Because site.build({ defer: false }) sets `running` synchronously before
     // its first internal await, every caller here is guaranteed to see
     // the first build already in flight and coalesce into one trailing
     // pass, rather than starting a second bundle() concurrently or
     // missing b.md entirely.
     writeFileSync(path.join(sourceFolder, "a.md"), "a")
-    const firstCall = queue()
+    const firstCall = site.build({ defer: false })
     writeFileSync(path.join(sourceFolder, "b.md"), "b")
-    const secondCall = queue()
-    const thirdCall = queue()
+    const secondCall = site.build({ defer: false })
+    const thirdCall = site.build({ defer: false })
 
     const [first, second, third] = await Promise.all([firstCall, secondCall, thirdCall])
 
@@ -67,13 +67,13 @@ test("bundler: step() coalesces concurrent callers into a single trailing pass i
     assert.equal(readFileCalls, 2)
 
     for (const result of [first, second, third]) {
-      assert.ok(result.cache.target.get("a.html"))
-      assert.ok(result.cache.target.get("b.html"))
+      assert.ok(result.database.target.get("a.html"))
+      assert.ok(result.database.target.get("b.html"))
     }
   })
 })
 
-test("bundler: a slow deferred runBuffers() doesn't block a concurrent foreground step() call", async () => {
+test("bundler: a slow deferred runBuffers() doesn't block a concurrent foreground site.build({ defer: false }) call", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "video.bin"), "binary content")
 
@@ -110,12 +110,12 @@ test("bundler: a slow deferred runBuffers() doesn't block a concurrent foregroun
       }]
     }
 
-    const queue = await bundler(config)
-    const first = await queue()
+    const site = await bundler(config)
+    const first = await site.build({ defer: false })
 
     // Fire the slow buffer analysis without awaiting it, mirroring how
     // the file-watcher handler calls runBuffers()/runFetches(): this
-    // must not block a concurrent foreground edit's own queue() call.
+    // must not block a concurrent foreground edit's own site.build({ defer: false }) call.
     const runBuffersPromise = first.runBuffers()
 
     await wait(20)
@@ -126,12 +126,12 @@ test("bundler: a slow deferred runBuffers() doesn't block a concurrent foregroun
     // being analyzed.
     await writeFile(path.join(sourceFolder, "page.md"), "hello")
     const start = Date.now()
-    const result = await queue()
+    const result = await site.build({ defer: false })
     const elapsed = Date.now() - start
 
     assert.equal(slowReadFinished, false, "the foreground rebuild should finish well before the slow buffer analysis does")
-    assert.ok(elapsed < 80, `foreground queue() call took ${elapsed}ms - it should not have waited on the slow buffer analysis`)
-    assert.ok(result.cache.target.get("page.html"))
+    assert.ok(elapsed < 80, `foreground site.build({ defer: false }) call took ${elapsed}ms - it should not have waited on the slow buffer analysis`)
+    assert.ok(result.database.target.get("page.html"))
 
     await runBuffersPromise
   })

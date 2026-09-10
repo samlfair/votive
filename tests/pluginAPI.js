@@ -46,8 +46,8 @@ test("plugin callbacks receive a restricted api instead of the full database", a
       }]
     }
 
-    const queue = await bundler(config)
-    const first = await queue()
+    const site = await bundler(config)
+    const first = await site.build({ defer: false })
 
     // Only the curated methods are exposed - not the full database surface.
     assert.deepEqual(Object.keys(seenAPI).sort(), ["createTarget", "target", "targetBySource", "targets", "url"])
@@ -59,7 +59,7 @@ test("plugin callbacks receive a restricted api instead of the full database", a
     const b = seenAPI.target("b.html")
     assert.equal(b.metadata.name, "b.md")
 
-    const deps = first.cache.dependency.getAllByTarget("b.html")
+    const deps = first.database.dependency.getAllByTarget("b.html")
     assert.ok(deps.some(d => d.dependent === "a.html"))
   })
 })
@@ -87,10 +87,10 @@ test("api.createTarget() from readFile() persists a new target", async () => {
       }]
     }
 
-    const queue = await bundler(config)
-    const first = await queue()
+    const site = await bundler(config)
+    const first = await site.build({ defer: false })
 
-    assert.ok(first.cache.target.get("generated.html"))
-    assert.equal(first.cache.target.get("generated.html").metadata.generated, "yes")
+    assert.ok(first.database.target.get("generated.html"))
+    assert.equal(first.database.target.get("generated.html").metadata.generated, "yes")
   })
 })

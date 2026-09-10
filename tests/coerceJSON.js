@@ -32,10 +32,10 @@ test("coerceJSON: a target with no metadata reads back as {} instead of throwing
       }]
     }
 
-    const step = await bundler(config)
-    const result = await step()
+    const site = await bundler(config)
+    const result = await site.build({ defer: false })
 
-    const target = result.cache.target.get("a.html")
+    const target = result.database.target.get("a.html")
     assert.ok(target)
     assert.deepEqual(target.metadata, {})
   } finally {

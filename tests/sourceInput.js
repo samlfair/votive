@@ -47,7 +47,7 @@ test("source: readFile receives project-relative paths, never absolute ones", as
       plugins: [recordingPlugin(seen)]
     }
 
-    await (await bundler(config))()
+    await (await bundler(config)).build({ defer: false })
 
     const paths = seen.map(source => source.path).sort()
     assert.deepEqual(paths, ["blog/post.md", "settings.md"])
@@ -76,7 +76,7 @@ test("source: target is where routing sent the file", async () => {
       plugins: [recordingPlugin(seen)]
     }
 
-    await (await bundler(config))()
+    await (await bundler(config)).build({ defer: false })
 
     assert.equal(seen[0].target, path.join("blog", "post.html"))
   })
@@ -93,7 +93,7 @@ test("source: text carries the contents, and buffer() reads the same bytes", asy
       plugins: [recordingPlugin(seen)]
     }
 
-    await (await bundler(config))()
+    await (await bundler(config)).build({ defer: false })
 
     assert.equal(seen[0].text, "hello there")
     assert.equal(seen[0].buffer().toString("utf-8"), "hello there")
@@ -111,7 +111,7 @@ test("source: a buffer processor gets no text, and reads bytes on demand", async
       plugins: [recordingPlugin(seen, "buffer")]
     }
 
-    const { runBuffers } = await (await bundler(config))()
+    const { runBuffers } = await (await bundler(config)).build({ defer: false })
     assert.equal(seen.length, 0, "a buffer read is deferred, not run during the build")
 
     await runBuffers()
@@ -139,7 +139,7 @@ test("source: the same shape reaches both formats", async () => {
       plugins: [recordingPlugin(text), recordingPlugin(buffers, "buffer")]
     }
 
-    const { runBuffers } = await (await bundler(config))()
+    const { runBuffers } = await (await bundler(config)).build({ defer: false })
     await runBuffers()
 
     const shape = source => Object.keys(source).filter(key => key !== "text").sort()
