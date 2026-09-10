@@ -32,7 +32,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
           format: "buffer",
           readFile(source) {
             readFileCalls++
-            return { abstract: { kind: "photo" }, metadata: { width: 100 } }
+            return { metadata: { kind: "photo", width: 100 } }
           }
         }
       }]
@@ -65,7 +65,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
           format: "buffer",
           readFile(source) {
             readFileCalls++
-            return { abstract: { kind: "photo" }, metadata: { width: 100 } }
+            return { metadata: { kind: "photo", width: 100 } }
           }
         }
       }]
@@ -80,8 +80,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
 
       assert.equal(readFileCalls, 1)
       const target = database.target.get("0")
-      assert.deepEqual(target.abstract, { kind: "photo" })
-      assert.deepEqual(target.metadata, { width: 100 })
+      assert.deepEqual(target.metadata, { kind: "photo", width: 100 })
 
       // A second readSources pass sees the source as already handled.
       const second = await readSources(config, database, processors)
@@ -103,7 +102,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
           format: "buffer",
           readFile() {
             readFileCalls++
-            return { abstract: {}, metadata: { seen: readFileCalls } }
+            return { metadata: { seen: readFileCalls } }
           }
         }
       }]
@@ -140,10 +139,10 @@ test("readBuffers: deferred buffer processing", async (t) => {
         processor: {
           extensions: [".bin"],
           format: "buffer",
-          readFile(filePath, api) {
+          readFile(source, { api }) {
             readFileCalls++
             api.url.create("https://example.com/photo", { title: "Photo" })
-            return { abstract: {}, metadata: {} }
+            return { metadata: {} }
           }
         }
       }]
@@ -190,7 +189,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
           extensions: [".bin"],
           format: "buffer",
           readFile() {
-            return { abstract: {}, metadata: {} }
+            return { metadata: {} }
           }
         }
       }]

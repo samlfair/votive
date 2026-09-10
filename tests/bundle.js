@@ -65,7 +65,7 @@ test("bundle: buffer processing and URL fetches a plugin claims are both deferre
               writeFile: () => ({ data: "" }),
               readFile() {
                 bufferReadCalls++
-                return { abstract: {}, metadata: { kind: "photo" } }
+                return { metadata: { kind: "photo" } }
               }
             },
             {
@@ -75,9 +75,8 @@ test("bundle: buffer processing and URL fetches a plugin claims are both deferre
               readURL: (data) => ({ fetched: data }),
               readFile(source) {
                 return {
-                  abstract: {},
-                  metadata: {},
-                  urls: [{ data: source.text.trim(), runner: "text", target: "page.html", extension: ".md" }]
+                                    metadata: {},
+                  urls: [{ url: source.text.trim(), target: "page.html", extension: ".md" }]
                 }
               }
             }
@@ -123,17 +122,17 @@ test("bundle: runFetches auto-triggers a rebuild that picks up the newly-staled 
         verbose: false,
         plugins: [{
           name: "test-plugin",
-          router: () => ({ dir: [], name: "page", ext: ".html" }),
           processors: [{
+            router: () => ({ dir: [], name: "page", ext: ".html" }),
             extensions: [".md", ".html"],
             format: "text",
             writeFile: () => { writeFileCalls++; return { data: "" } },
             readURL: (data) => ({ fetched: data }),
             readFile(source) {
               return {
-                abstract: { type: "page" },
+                data: "page",
                 metadata: {},
-                urls: [{ data: source.text.trim(), runner: "text", target: "page.html", extension: ".md" }]
+                urls: [{ url: source.text.trim(), target: "page.html", extension: ".md" }]
               }
             }
           }]
@@ -172,12 +171,12 @@ test("bundle: runBuffers auto-triggers a rebuild that writes the newly-created b
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: () => ({ dir: [], name: "photo", ext: ".html" }),
         processors: [{
+          router: () => ({ dir: [], name: "photo", ext: ".html" }),
           extensions: [".bin", ".html"],
           format: "buffer",
           writeFile: () => { writeFileCalls++; return { data: "" } },
-          readFile: () => ({ abstract: { kind: "photo" }, metadata: {} })
+          readFile: () => ({ metadata: { kind: "photo" } })
         }]
       }]
     }
@@ -195,7 +194,7 @@ test("bundle: runBuffers auto-triggers a rebuild that writes the newly-created b
     // target.create's new-target branch leaves it stale=1; the
     // auto-chained rebuild should have picked that up and written it.
     assert.equal(writeFileCalls, 1)
-    assert.deepEqual(first.cache.target.get("photo.html").abstract, { kind: "photo" })
+    assert.deepEqual(first.cache.target.get("photo.html").metadata, { kind: "photo" })
   })
 })
 
@@ -209,12 +208,12 @@ test("bundle: a target created via runBuffers() actually reaches the on-disk .vo
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: () => ({ dir: [], name: "photo", ext: ".html" }),
         processors: [{
+          router: () => ({ dir: [], name: "photo", ext: ".html" }),
           extensions: [".bin", ".html"],
           format: "buffer",
           writeFile: () => ({ data: "" }),
-          readFile: () => ({ abstract: { kind: "photo" }, metadata: {} })
+          readFile: () => ({ metadata: { kind: "photo" } })
         }]
       }]
     }
@@ -254,12 +253,12 @@ test("bundle: config.databasePath overrides where .votive.db is written", async 
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: () => ({ dir: [], name: "photo", ext: ".html" }),
         processors: [{
+          router: () => ({ dir: [], name: "photo", ext: ".html" }),
           extensions: [".bin", ".html"],
           format: "buffer",
           writeFile: () => ({ data: "" }),
-          readFile: () => ({ abstract: { kind: "photo" }, metadata: {} })
+          readFile: () => ({ metadata: { kind: "photo" } })
         }]
       }]
     }
@@ -296,12 +295,12 @@ test("bundle: a plugin with no processors at all doesn't crash the build", async
         { name: "no-op-plugin" },
         {
           name: "test-plugin",
-          router: () => ({ dir: [], name: "page", ext: ".html" }),
           processors: [{
+            router: () => ({ dir: [], name: "page", ext: ".html" }),
             extensions: [".md", ".html"],
             format: "text",
             writeFile: () => ({ data: "" }),
-            readFile: () => ({ abstract: {}, metadata: {} })
+            readFile: () => ({ metadata: {} })
           }]
         }
       ]
@@ -326,12 +325,12 @@ test("bundle: an existing on-disk database is opened in WAL mode and each build 
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
         processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
-          readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
-          writeFile: (target) => ({ data: target.abstract?.text ?? "" })
+          readFile: (source) => ({ data: source.text, metadata: {} }),
+          writeFile: (target) => ({ data: target.data ?? "" })
         }]
       }]
     }
@@ -374,11 +373,11 @@ test("bundle: a writeFile that throws rolls the build back, leaving the database
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
         processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
-          readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
+          readFile: (source) => ({ data: source.text, metadata: {} }),
           writeFile: (target) => {
             if (explode) throw new Error("plugin exploded")
             return { data: target.abstract?.text ?? "" }
@@ -421,14 +420,14 @@ test("hooks: a readFolder that returns {} doesn't crash the build", async () => 
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
         processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
-          readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
+          readFile: (source) => ({ data: source.text, metadata: {} }),
           // The whole point: no urls, no targets, no settings.
           readFolder: () => ({}),
-          writeFile: (target) => ({ data: target.abstract?.text ?? "" })
+          writeFile: (target) => ({ data: target.data ?? "" })
         }]
       }]
     }
@@ -448,13 +447,13 @@ test("hooks: a readFolder that returns nothing at all doesn't crash the build", 
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
         processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
-          readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
+          readFile: (source) => ({ data: source.text, metadata: {} }),
           readFolder: () => undefined,
-          writeFile: (target) => ({ data: target.abstract?.text ?? "" })
+          writeFile: (target) => ({ data: target.data ?? "" })
         }]
       }]
     }
@@ -487,17 +486,17 @@ test("hooks: a readFolder returning urls but no targets still has its urls fetch
         verbose: false,
         plugins: [{
           name: "test-plugin",
-          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
           processors: [{
+            router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
             extensions: [".md", ".html"],
             format: "text",
-            readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
+            readFile: (source) => ({ data: source.text, metadata: {} }),
             // urls, deliberately with no `targets` alongside them.
             // Note the trailing slash: readFolder receives "blog/", not "blog".
-            readFolder: (folderPath) =>
-              folderPath.startsWith("blog") ? { urls: [{ data: `${server.baseUrl}/from-folder` }] } : {},
+            readFolder: ({ path: folderPath }) =>
+              folderPath.startsWith("blog") ? { urls: [{ url: `${server.baseUrl}/from-folder` }] } : {},
             readURL: async (response) => ({ body: await response.text() }),
-            writeFile: (target) => ({ data: target.abstract?.text ?? "" })
+            writeFile: (target) => ({ data: target.data ?? "" })
           }]
         }]
       }
@@ -523,11 +522,11 @@ test("hooks: a writeFile returning nothing leaves the target alone instead of de
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
         processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
-          readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
+          readFile: (source) => ({ data: source.text, metadata: {} }),
           // No return at all - used to mean "delete this target".
           writeFile: () => undefined
         }]
@@ -553,11 +552,11 @@ test("hooks: a writeFile returning { delete: true } removes the target and its f
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
         processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
-          readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
+          readFile: (source) => ({ data: source.text, metadata: {} }),
           writeFile: (target) => remove ? { delete: true } : { data: target.abstract?.text ?? "" }
         }]
       }]
@@ -586,11 +585,11 @@ test("hooks: a target whose output is an empty string is written and marked fres
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
         processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
-          readFile: (source) => ({ abstract: { text: source.text }, metadata: {} }),
+          readFile: (source) => ({ data: source.text, metadata: {} }),
           writeFile: () => ({ data: "" })
         }]
       }]
@@ -606,4 +605,158 @@ test("hooks: a target whose output is an empty string is written and marked fres
     // ...and marked fresh, so it isn't rebuilt forever.
     assert.deepEqual(result.cache.target.getStale().map(t => t.path), [])
   })
+})
+
+test("hooks: every hook's context is exactly { api, settings, config }, and readFile's settings is undefined", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "a.md"), "hello")
+
+    /** @type {Record<string, string[]>} */
+    const seen = {}
+    const record = (hook) => (subject, context) => {
+      seen[hook] = Object.keys(context).sort()
+      if (hook === "readFile") seen.readFileSettings = context.settings === undefined
+      return hook === "writeFile" ? { data: "x" } : undefined
+    }
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source, context) => { record("readFile")(source, context); return { data: source.text, metadata: {} } },
+          transformFile: record("transformFile"),
+          readFolder: record("readFolder"),
+          writeFile: record("writeFile")
+        }]
+      }]
+    }
+
+    const step = await bundler(config)
+    await step()
+
+    for (const hook of ["readFile", "transformFile", "readFolder", "writeFile"]) {
+      assert.deepEqual(seen[hook], ["api", "config", "settings"], `${hook} context keys`)
+    }
+    assert.equal(seen.readFileSettings, true, "readFile's settings is undefined")
+  })
+})
+
+test("hooks: an object-valued metadata key re-created with an equal value does not stale its dependents", async () => {
+  const createDatabase = (await import("../lib/createDatabase.js")).default
+  const database = createDatabase(":memory:")
+
+  database.target.create({ path: "page.html", metadata: { author: { name: "Sam" } } })
+  database.target.create({ path: "reader.html", metadata: {} })
+
+  // Reading a property through the tracking getter is what registers the
+  // dependency - there is no separate create call.
+  const tracked = database.target.getWithTrackers("page.html", "reader.html")
+  void tracked.metadata.author
+  database.target.markFresh("reader.html")
+
+  // A deep-equal but distinct object. Reference inequality used to make
+  // this look changed on every read, restaling every dependent - which
+  // would now hit hastAbstract on every markdown page on every pass.
+  database.target.create({ path: "page.html", metadata: { author: { name: "Sam" } } })
+
+  const stale = database.target.getStale().map(target => target.path)
+  assert.ok(!stale.includes("reader.html"), `reader.html should not be stale, got ${stale.join(", ")}`)
+})
+
+test("hooks: a metadata key set to 0, false or empty string is not deleted", async () => {
+  const createDatabase = (await import("../lib/createDatabase.js")).default
+  const database = createDatabase(":memory:")
+
+  database.target.create({ path: "page.html", metadata: { count: 5, flag: "yes", note: "hi" } })
+  // The deletion check was `if (!target.metadata[key])`, so a falsy new
+  // value looked like an absent key.
+  database.target.create({ path: "page.html", metadata: { count: 0, flag: "", note: "hi" } })
+
+  const metadata = database.target.get("page.html").metadata
+  assert.equal(metadata.count, 0)
+  assert.equal(metadata.flag, "")
+  assert.equal(metadata.note, "hi")
+})
+
+test("hooks: target.get() returns a target whose data is null", async () => {
+  const createDatabase = (await import("../lib/createDatabase.js")).default
+  const database = createDatabase(":memory:")
+
+  // A copy-through target (image, font) has no data at all. The old
+  // `if (!abstract) return` guard made target.get() return undefined here.
+  database.target.create({ path: "photo.jpg", metadata: { uuid: "abc" }, source: "photo.jpg" })
+
+  const target = database.target.get("photo.jpg")
+  assert.ok(target, "a target with no data is still a target")
+  assert.equal(target.data, null)
+  assert.deepEqual(target.metadata, { uuid: "abc" })
+})
+
+test("hooks: a second build after a clean one writes nothing (the data write-back doesn't loop)", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "a.md"), "hello")
+
+    let writes = 0
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => ({ data: source.text, metadata: {} }),
+          writeFile: (target) => { writes++; return { data: `<p>${target.data}</p>` } }
+        }]
+      }]
+    }
+
+    const step = await bundler(config)
+    await step()
+    const afterFirst = writes
+
+    // writeTargets stores what writeFile produced back onto the target.
+    // Routed through target.create() that would mark the target stale
+    // again, and every build would rewrite every page forever.
+    await step()
+    assert.equal(writes, afterFirst, "the second build should write nothing")
+  })
+})
+
+test("hooks: a readURL that never reads the body leaves it unread", async () => {
+  const database = (await import("../lib/createDatabase.js")).default(":memory:")
+  const fetchURLs = (await import("../lib/fetchURLs.js")).default
+
+  let bodyRead = false
+  const server = await withServer((req, res) => {
+    res.writeHead(200, { "content-type": "text/plain" })
+    res.end("a body nobody wanted")
+  })
+
+  try {
+    // Only the headers are touched. The body methods are lazy, which is
+    // the boundary the old `runner` name on the task tried to express
+    // before anyone had seen the response.
+    const readURL = (response) => {
+      bodyRead = false
+      return { status: response.status }
+    }
+    const request = { task: { url: `${server.baseUrl}/x` }, processor: { readURL } }
+
+    const { runFetches } = await fetchURLs([request], { plugins: [] }, database)
+    await runFetches()
+
+    assert.equal(bodyRead, false)
+    assert.deepEqual(database.url.get(`${server.baseUrl}/x`), { status: 200 })
+  } finally {
+    await server.close()
+  }
 })

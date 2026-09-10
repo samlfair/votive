@@ -28,17 +28,17 @@ test("plugin callbacks receive a restricted api instead of the full database", a
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: ({ name }) => ({ dir: [], name, ext: ".html" }),
         processors: [{
+          router: ({ name }) => ({ dir: [], name, ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
-          readFile: (source) => ({ abstract: { tag: "p" }, metadata: { name: path.basename(source.path) } }),
+          readFile: (source) => ({ metadata: { name: path.basename(source.path) } }),
           // writeFile runs after every target has already been created,
           // so reading b.html's own target from within a.html's write
           // (the only cross-file read that's guaranteed ordering-safe)
           // still exercises api.target() against real, already-committed
           // data instead of racing readFile's per-file concurrency.
-          writeFile: (target, settings, api) => {
+          writeFile: (target, { settings, api }) => {
             if (target.path === "a.html") seenAPI = api
             return { data: "" }
           }
@@ -74,14 +74,14 @@ test("api.createTarget() from readFile() persists a new target", async () => {
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: ({ name, dir }) => ({ dir, name, ext: ".html" }),
         processors: [{
+          router: ({ name, dir }) => ({ dir, name, ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
           writeFile: () => ({ data: "" }),
-          readFile: (source, api) => {
-            api.createTarget({ path: "generated.html", abstract: { tag: "p" }, metadata: { generated: "yes" } })
-            return { abstract: { tag: "p" }, metadata: {} }
+          readFile: (source, { api }) => {
+            api.createTarget({ path: "generated.html", metadata: { generated: "yes" } })
+            return { metadata: {} }
           }
         }]
       }]

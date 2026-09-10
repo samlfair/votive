@@ -23,8 +23,8 @@ test("target.getMany filters", async (t) => {
   await t.test("bare scalar is equality", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "a.html", abstract: {}, metadata: { status: "published" } },
-      { path: "b.html", abstract: {}, metadata: { status: "draft" } },
+      { path: "a.html", metadata: { status: "published" } },
+      { path: "b.html", metadata: { status: "draft" } },
     ])
 
     const stop = stopwatch()
@@ -35,8 +35,8 @@ test("target.getMany filters", async (t) => {
   await t.test("bare scalar also matches inside an array field", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "a.html", abstract: {}, metadata: { tags: ["AI", "Crypto"] } },
-      { path: "b.html", abstract: {}, metadata: { tags: ["Crypto"] } },
+      { path: "a.html", metadata: { tags: ["AI", "Crypto"] } },
+      { path: "b.html", metadata: { tags: ["Crypto"] } },
     ])
 
     const stop = stopwatch()
@@ -47,8 +47,8 @@ test("target.getMany filters", async (t) => {
   await t.test("bare array is 'all': must contain every listed element", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "a.html", abstract: {}, metadata: { tags: ["AI", "Crypto", "Web3"] } },
-      { path: "b.html", abstract: {}, metadata: { tags: ["AI"] } },
+      { path: "a.html", metadata: { tags: ["AI", "Crypto", "Web3"] } },
+      { path: "b.html", metadata: { tags: ["AI"] } },
     ])
 
     const stop = stopwatch()
@@ -59,8 +59,8 @@ test("target.getMany filters", async (t) => {
   await t.test("explicit 'all' operator behaves the same as a bare array", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "a.html", abstract: {}, metadata: { tags: ["AI", "Crypto"] } },
-      { path: "b.html", abstract: {}, metadata: { tags: ["AI"] } },
+      { path: "a.html", metadata: { tags: ["AI", "Crypto"] } },
+      { path: "b.html", metadata: { tags: ["AI"] } },
     ])
 
 
@@ -72,9 +72,9 @@ test("target.getMany filters", async (t) => {
   await t.test("'!=' negates equality-or-contains, including missing fields", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "a.html", abstract: {}, metadata: { status: "published" } },
-      { path: "b.html", abstract: {}, metadata: { status: "draft" } },
-      { path: "c.html", abstract: {}, metadata: { title: "C" } },
+      { path: "a.html", metadata: { status: "published" } },
+      { path: "b.html", metadata: { status: "draft" } },
+      { path: "c.html", metadata: { title: "C" } },
     ])
 
     const stop = stopwatch()
@@ -85,9 +85,9 @@ test("target.getMany filters", async (t) => {
   await t.test("bare 'null' means the property is absent or explicitly null", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "a.html", abstract: {}, metadata: { deletedAt: "2024-01-01" } },
-      { path: "b.html", abstract: {}, metadata: { deletedAt: null, title: "B" } },
-      { path: "c.html", abstract: {}, metadata: { title: "C" } },
+      { path: "a.html", metadata: { deletedAt: "2024-01-01" } },
+      { path: "b.html", metadata: { deletedAt: null, title: "B" } },
+      { path: "c.html", metadata: { title: "C" } },
     ])
 
     const stop = stopwatch()
@@ -98,8 +98,8 @@ test("target.getMany filters", async (t) => {
   await t.test("comparison operators", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "a.html", abstract: {}, metadata: { rating: 3 } },
-      { path: "b.html", abstract: {}, metadata: { rating: 5 } },
+      { path: "a.html", metadata: { rating: 3 } },
+      { path: "b.html", metadata: { rating: 5 } },
     ])
 
     const stop1 = stopwatch()
@@ -114,8 +114,8 @@ test("target.getMany filters", async (t) => {
   await t.test("'in' and 'any' match on overlap with a list", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "a.html", abstract: {}, metadata: { country: "Canada" } },
-      { path: "b.html", abstract: {}, metadata: { country: "France" } },
+      { path: "a.html", metadata: { country: "Canada" } },
+      { path: "b.html", metadata: { country: "France" } },
     ])
 
 
@@ -131,8 +131,8 @@ test("target.getMany filters", async (t) => {
   await t.test("nested paths recurse into sub-objects", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "a.html", abstract: {}, metadata: { author: { expertise: ["AI", "Crypto"], country: "Canada" } } },
-      { path: "b.html", abstract: {}, metadata: { author: { expertise: ["AI"], country: "France" } } },
+      { path: "a.html", metadata: { author: { expertise: ["AI", "Crypto"], country: "Canada" } } },
+      { path: "b.html", metadata: { author: { expertise: ["AI"], country: "France" } } },
     ])
 
     const stop = stopwatch()
@@ -146,9 +146,9 @@ test("target.getMany filters", async (t) => {
   await t.test("'|' ORs independent filters", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "a.html", abstract: {}, metadata: { category: "Tech", rating: 2 } },
-      { path: "b.html", abstract: {}, metadata: { category: "Food", rating: 5 } },
-      { path: "c.html", abstract: {}, metadata: { category: "Food", rating: 1 } },
+      { path: "a.html", metadata: { category: "Tech", rating: 2 } },
+      { path: "b.html", metadata: { category: "Food", rating: 5 } },
+      { path: "c.html", metadata: { category: "Food", rating: 1 } },
     ])
 
     const stop = stopwatch()
@@ -166,12 +166,12 @@ test("target.getMany filters", async (t) => {
   await t.test("'|' nested under a path inherits that path (author.country, not a fresh 'country')", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "canada.html", abstract: {}, metadata: { status: "published", views: 2000, author: { country: "Canada", theme: "Winter" } } },
-      { path: "usa.html", abstract: {}, metadata: { status: "published", views: 2000, author: { country: "USA", theme: "Winter" } } },
-      { path: "summer.html", abstract: {}, metadata: { status: "published", views: 2000, author: { country: "France", theme: "Summer" } } },
-      { path: "notsummer.html", abstract: {}, metadata: { status: "published", views: 2000, author: { country: "France", theme: "Winter" } } },
-      { path: "unpublished.html", abstract: {}, metadata: { status: "draft", views: 2000, author: { country: "Canada", theme: "Winter" } } },
-      { path: "lowviews.html", abstract: {}, metadata: { status: "published", views: 500, author: { country: "Canada", theme: "Winter" } } },
+      { path: "canada.html", metadata: { status: "published", views: 2000, author: { country: "Canada", theme: "Winter" } } },
+      { path: "usa.html", metadata: { status: "published", views: 2000, author: { country: "USA", theme: "Winter" } } },
+      { path: "summer.html", metadata: { status: "published", views: 2000, author: { country: "France", theme: "Summer" } } },
+      { path: "notsummer.html", metadata: { status: "published", views: 2000, author: { country: "France", theme: "Winter" } } },
+      { path: "unpublished.html", metadata: { status: "draft", views: 2000, author: { country: "Canada", theme: "Winter" } } },
+      { path: "lowviews.html", metadata: { status: "published", views: 500, author: { country: "Canada", theme: "Winter" } } },
     ])
     // The CLAUDE.md example filter: published, enough views, and (Canadian OR American OR not-Summer-themed).
 
@@ -195,7 +195,7 @@ test("target.getMany filters", async (t) => {
   await t.test("empty filter matches every target", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "a.html", abstract: {}, metadata: { status: "published" } },
+      { path: "a.html", metadata: { status: "published" } },
     ])
 
     const stop = stopwatch()
@@ -205,9 +205,9 @@ test("target.getMany filters", async (t) => {
   await t.test("! over a multi-key object is NOT(AND), not NOT(OR)", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "both.html", abstract: {}, metadata: { a: 1, b: 2 } },
-      { path: "onlya.html", abstract: {}, metadata: { a: 1, b: 9 } },
-      { path: "neither.html", abstract: {}, metadata: { a: 8, b: 9 } },
+      { path: "both.html", metadata: { a: 1, b: 2 } },
+      { path: "onlya.html", metadata: { a: 1, b: 9 } },
+      { path: "neither.html", metadata: { a: 8, b: 9 } },
     ])
 
     // The previous implementation computed `1 - MAX(children)` - "no child
@@ -218,9 +218,9 @@ test("target.getMany filters", async (t) => {
   await t.test("! over a | negates the whole disjunction", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "both.html", abstract: {}, metadata: { a: 1, b: 2 } },
-      { path: "onlya.html", abstract: {}, metadata: { a: 1, b: 9 } },
-      { path: "neither.html", abstract: {}, metadata: { a: 8, b: 9 } },
+      { path: "both.html", metadata: { a: 1, b: 2 } },
+      { path: "onlya.html", metadata: { a: 1, b: 9 } },
+      { path: "neither.html", metadata: { a: 8, b: 9 } },
     ])
 
     assert.deepEqual(paths(database, { "!": { "|": [{ a: 1 }, { b: 2 }] } }), ["neither.html"])
@@ -229,8 +229,8 @@ test("target.getMany filters", async (t) => {
   await t.test("nesting deeper than six levels is no longer truncated", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "deep.html", abstract: {}, metadata: { a: { b: { c: { d: { e: { f: { g: 1 } } } } } } } },
-      { path: "shallow.html", abstract: {}, metadata: { a: { b: 1 } } },
+      { path: "deep.html", metadata: { a: { b: { c: { d: { e: { f: { g: 1 } } } } } } } },
+      { path: "shallow.html", metadata: { a: { b: 1 } } },
     ])
 
     // MAX_FILTER_DEPTH was 6, and anything below it was silently ignored -
@@ -241,8 +241,8 @@ test("target.getMany filters", async (t) => {
   await t.test("all against a scalar field treats it as a one-element array", () => {
     const database = createDatabase(":memory:")
     seed(database, [
-      { path: "a.html", abstract: {}, metadata: { status: "published" } },
-      { path: "b.html", abstract: {}, metadata: { status: "draft" } },
+      { path: "a.html", metadata: { status: "published" } },
+      { path: "b.html", metadata: { status: "draft" } },
     ])
 
     assert.deepEqual(paths(database, { status: ["published"] }), ["a.html"])

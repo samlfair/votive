@@ -31,14 +31,14 @@ test("bundler: step() coalesces concurrent callers into a single trailing pass i
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: ({ name }) => ({ dir: [], name, ext: ".html" }),
         processors: [{
+          router: ({ name }) => ({ dir: [], name, ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
           writeFile: () => ({ data: "" }),
           readFile() {
             readFileCalls++
-            return { abstract: {}, metadata: {} }
+            return { metadata: {} }
           }
         }]
       }]
@@ -86,9 +86,9 @@ test("bundler: a slow deferred runBuffers() doesn't block a concurrent foregroun
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: ({ name }) => ({ dir: [], name, ext: ".html" }),
         processors: [
           {
+            router: ({ name }) => ({ dir: [], name, ext: ".html" }),
             extensions: [".bin", ".html"],
             format: "buffer",
             writeFile: () => ({ data: "" }),
@@ -96,14 +96,15 @@ test("bundler: a slow deferred runBuffers() doesn't block a concurrent foregroun
               slowReadStarted = true
               await wait(100)
               slowReadFinished = true
-              return { abstract: {}, metadata: {} }
+              return { metadata: {} }
             }
           },
           {
+            router: ({ name }) => ({ dir: [], name, ext: ".html" }),
             extensions: [".md", ".html"],
             format: "text",
             writeFile: () => ({ data: "" }),
-            readFile: () => ({ abstract: {}, metadata: {} })
+            readFile: () => ({ metadata: {} })
           }
         ]
       }]

@@ -25,16 +25,16 @@ test("writeTargets: a target with an empty abstract is still written - the plugi
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: ({ name, dir }) => name === "trigger" ? { dir: [], name: "trigger", ext: ".html" } : false,
         processors: [{
+          router: ({ name, dir }) => name === "trigger" ? { dir: [], name: "trigger", ext: ".html" } : false,
           extensions: [".md", ".html"],
           format: "text",
-          readFile: (source, api) => {
+          readFile: (source, { api }) => {
             // Deliberately empty abstract, matching the shape a
             // dispatch-by-path writer (like xml/index.js's sitemap/feed
             // targets) uses today - it never reads `abstract` at all.
-            api.createTarget({ path: "always-written.html", abstract: {}, metadata: {} })
-            return { abstract: {}, metadata: {} }
+            api.createTarget({ path: "always-written.html", metadata: {} })
+            return { metadata: {} }
           },
           writeFile: (target) => ({ data: `written:${target.path}` })
         }]

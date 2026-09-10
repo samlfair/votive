@@ -19,15 +19,15 @@ test("coerceJSON: a target with no metadata reads back as {} instead of throwing
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
         processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
           // No `metadata` key at all: the column stays null, and the read
           // path used to call JSON.parse(undefined), which throws
           // `"undefined" is not valid JSON`.
-          readFile: (source) => ({ abstract: { text: source.text } }),
-          writeFile: (target) => ({ data: target.abstract?.text ?? "" })
+          readFile: (source) => ({ data: source.text }),
+          writeFile: (target) => ({ data: target.data ?? "" })
         }]
       }]
     }

@@ -23,7 +23,7 @@ async function withFolders(run) {
 test("cleanupDatabase: prunes a target whose file and source are both gone", async () => {
   await withFolders(async (sourceFolder, targetFolder) => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "gone.html", abstract: {}, metadata: {}, source: path.join(sourceFolder, "gone.md") })
+    database.target.create({ path: "gone.html", metadata: {}, source: path.join(sourceFolder, "gone.md") })
     // Neither gone.html nor gone.md exist on disk.
 
     const summary = cleanupDatabase({ sourceFolder, targetFolder, verbose: false }, database)
@@ -40,7 +40,7 @@ test("cleanupDatabase: heals (marks stale) a target whose source still exists bu
     await writeFile(sourcePath, "content")
 
     const database = createDatabase(":memory:")
-    database.target.create({ path: "still-here.html", abstract: {}, metadata: {}, source: sourcePath })
+    database.target.create({ path: "still-here.html", metadata: {}, source: sourcePath })
     database.target.markFresh("still-here.html")
     // still-here.html was never actually written to targetFolder.
 
@@ -56,7 +56,7 @@ test("cleanupDatabase: heals (marks stale) a target whose source still exists bu
 test("cleanupDatabase: heals a synthetic target (no source) whose file is missing", async () => {
   await withFolders(async (sourceFolder, targetFolder) => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "sitemap.xml", abstract: {}, metadata: {} }) // no source
+    database.target.create({ path: "sitemap.xml", metadata: {} }) // no source
     database.target.markFresh("sitemap.xml")
 
     const summary = cleanupDatabase({ sourceFolder, targetFolder, verbose: false }, database)
@@ -69,7 +69,7 @@ test("cleanupDatabase: heals a synthetic target (no source) whose file is missin
 test("cleanupDatabase: leaves a virtual (write: false) target alone even with no file", async () => {
   await withFolders(async (sourceFolder, targetFolder) => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "partial.html", abstract: {}, metadata: {}, write: false })
+    database.target.create({ path: "partial.html", metadata: {}, write: false })
 
     const summary = cleanupDatabase({ sourceFolder, targetFolder, verbose: false }, database)
 
@@ -86,7 +86,7 @@ test("cleanupDatabase: leaves a healthy target (file present) untouched", async 
     await writeFile(path.join(targetFolder, "healthy.html"), "<html></html>")
 
     const database = createDatabase(":memory:")
-    database.target.create({ path: "healthy.html", abstract: {}, metadata: {}, source: sourcePath })
+    database.target.create({ path: "healthy.html", metadata: {}, source: sourcePath })
     database.target.markFresh("healthy.html")
 
     const summary = cleanupDatabase({ sourceFolder, targetFolder, verbose: false }, database)
@@ -101,7 +101,7 @@ test("cleanupDatabase: leaves a healthy target (file present) untouched", async 
 test("cleanupDatabase: prunes a dependency row whose dependent no longer exists", async () => {
   await withFolders(async (sourceFolder, targetFolder) => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "a.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "a.html", metadata: {} })
     await writeFile(path.join(targetFolder, "a.html"), "<html></html>")
     database.target.markFresh("a.html")
 
@@ -136,7 +136,7 @@ test("cleanupDatabase: doesn't crash on the route()-less \"0\" placeholder targe
     await writeFile(sourcePath, "content")
 
     const database = createDatabase(":memory:")
-    database.target.create({ path: "0", abstract: {}, metadata: {}, source: sourcePath })
+    database.target.create({ path: "0", metadata: {}, source: sourcePath })
 
     const row = database.raw.prepare("SELECT path, typeof(path) as t FROM targets WHERE path = '0'").get()
     assert.equal(row.t, "text")

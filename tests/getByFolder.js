@@ -4,10 +4,10 @@ import createDatabase from "../lib/createDatabase.js"
 
 /** @param {ReturnType<createDatabase>} database */
 function seed(database) {
-  database.target.create({ path: "a.html", abstract: {}, metadata: { date: "2024-01-01" } })
-  database.target.create({ path: "b.html", abstract: {}, metadata: { date: "2024-06-01" } })
-  database.target.create({ path: "c.html", abstract: {}, metadata: { title: "C" } })
-  database.target.create({ path: "d.html", abstract: {}, metadata: { date: "2024-03-01" } })
+  database.target.create({ path: "a.html", metadata: { date: "2024-01-01" } })
+  database.target.create({ path: "b.html", metadata: { date: "2024-06-01" } })
+  database.target.create({ path: "c.html", metadata: { title: "C" } })
+  database.target.create({ path: "d.html", metadata: { date: "2024-03-01" } })
 }
 
 test("target.getByFolder: orderBy", async (t) => {

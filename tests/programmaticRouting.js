@@ -35,14 +35,13 @@ test("readFile: a returned filePath does not move the target - routing decides w
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: () => ({ dir: [], name: "page", ext: ".html" }),
         processors: [{
+          router: () => ({ dir: [], name: "page", ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
           writeFile: (target) => ({ data: `written:${target.path}` }),
           readFile: () => ({
-            abstract: {},
-            metadata: {},
+                        metadata: {},
             filePath: "custom/moved.html"
           })
         }]
@@ -76,13 +75,13 @@ test("readFile: write: false creates a target without writing a file to disk", a
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: () => ({ dir: [], name: "partial", ext: ".html" }),
         processors: [{
+          router: () => ({ dir: [], name: "partial", ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
           writeFile: () => { writeFileCalls++; return { data: "should never land on disk" } },
           readFile: () => ({
-            abstract: { kind: "partial" },
+            metadata: { kind: "partial" },
             metadata: {},
             write: false
           })
@@ -96,7 +95,7 @@ test("readFile: write: false creates a target without writing a file to disk", a
     // The target exists and is readable...
     const target = cache.target.get("partial.html")
     assert.ok(target)
-    assert.equal(target.write, 0)
+    assert.equal(target.write, false)
 
     // ...its processor's writeFile still ran normally (side effects,
     // e.g. api.createTarget() calls, aren't skipped)...
@@ -120,14 +119,13 @@ test("readFile: write can flip an existing target between virtual and written ac
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: () => ({ dir: [], name: "toggle", ext: ".html" }),
         processors: [{
+          router: () => ({ dir: [], name: "toggle", ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
           writeFile: () => ({ data: "toggled content" }),
           readFile: () => ({
-            abstract: {},
-            metadata: {},
+                        metadata: {},
             write: virtual ? false : true
           })
         }]
@@ -137,7 +135,7 @@ test("readFile: write can flip an existing target between virtual and written ac
     const queue = await bundler(config)
     const first = await queue()
 
-    assert.equal(first.cache.target.get("toggle.html").write, 0)
+    assert.equal(first.cache.target.get("toggle.html").write, false)
     assert.equal(await exists(path.join(config.targetFolder, "toggle.html")), false)
 
     // Flip it, then touch the source file so it's re-read.
@@ -146,7 +144,7 @@ test("readFile: write can flip an existing target between virtual and written ac
 
     const second = await queue()
 
-    assert.equal(second.cache.target.get("toggle.html").write, 1)
+    assert.equal(second.cache.target.get("toggle.html").write, true)
     assert.equal(await exists(path.join(config.targetFolder, "toggle.html")), true)
   })
 })
@@ -161,14 +159,13 @@ test("readFile (buffer format): a returned filePath does not move the target eit
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: () => ({ dir: [], name: "asset", ext: ".html" }),
         processors: [{
+          router: () => ({ dir: [], name: "asset", ext: ".html" }),
           extensions: [".bin", ".html"],
           format: "buffer",
           writeFile: (target) => ({ data: `written:${target.path}` }),
           readFile: () => ({
-            abstract: {},
-            metadata: {},
+                        metadata: {},
             filePath: "buffers/renamed.html"
           })
         }]
@@ -199,17 +196,17 @@ test("readFile: an api.url.create() call attributes to the routed target path", 
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: ({ name }) => ({ dir: [], name, ext: ".html" }),
         processors: [{
+          router: ({ name }) => ({ dir: [], name, ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
           writeFile: (target) => ({ data: `written:${target.path}` }),
-          readFile: (source, api) => {
+          readFile: (source, { api }) => {
             // The api is real and pre-bound to targetPath, so this runs
             // immediately rather than being queued - the path it
             // attributes to is settled before read() is even called.
             api.url.create("https://example.com/thing", { title: "Thing" })
-            return { abstract: {}, metadata: {} }
+            return { metadata: {} }
           }
         }]
       }]

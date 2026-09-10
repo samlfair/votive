@@ -25,12 +25,12 @@ test("target.create records the source file path on a newly-created target", asy
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: () => ({ dir: [], name: "doc", ext: ".pdf" }),
         processors: [{
+          router: () => ({ dir: [], name: "doc", ext: ".pdf" }),
           extensions: [".pdf"],
           format: "buffer",
           writeFile: (target) => ({ data: target.buffer() }),
-          readFile: () => ({ abstract: { kind: "pdf" }, metadata: {} })
+          readFile: () => ({ metadata: { kind: "pdf" } })
         }]
       }]
     }
@@ -56,15 +56,15 @@ test("writeFile's target.buffer() reads the source file's raw bytes", async () =
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: () => ({ dir: [], name: "doc", ext: ".pdf" }),
         processors: [{
+          router: () => ({ dir: [], name: "doc", ext: ".pdf" }),
           extensions: [".pdf"],
           format: "buffer",
           writeFile: (target) => {
             writtenBuffer = target.buffer()
             return { data: writtenBuffer }
           },
-          readFile: () => ({ abstract: { kind: "pdf" }, metadata: {} })
+          readFile: () => ({ metadata: { kind: "pdf" } })
         }]
       }]
     }
@@ -94,15 +94,15 @@ test("writeFile's target.stream() opens a readable stream over the source file",
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: () => ({ dir: [], name: "movie", ext: ".mp4" }),
         processors: [{
+          router: () => ({ dir: [], name: "movie", ext: ".mp4" }),
           extensions: [".mp4"],
           format: "buffer",
           writeFile: async (target) => {
             for await (const chunk of target.stream()) streamedChunks.push(chunk)
             return { data: Buffer.concat(streamedChunks) }
           },
-          readFile: () => ({ abstract: { kind: "video" }, metadata: {} })
+          readFile: () => ({ metadata: { kind: "video" } })
         }]
       }]
     }

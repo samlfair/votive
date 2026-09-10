@@ -39,8 +39,7 @@ test("readSources: a settings contribution is scoped to the source file's own fo
           readFile: (source) => {
             const isSettings = path.basename(source.path) === "settings.md"
             return {
-              abstract: {},
-              metadata: {},
+                            metadata: {},
               settings: isSettings ? { title: source.text } : undefined
             }
           }

@@ -56,7 +56,7 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
 
   await t.test("metadata rows written for a target (class='target') don't leak into settings.getAll", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "a.html", abstract: {}, metadata: { title: "A" } })
+    database.target.create({ path: "a.html", metadata: { title: "A" } })
     database.setting.accumulate("", { title: "Site" }, "settings.md")
 
     const all = database.setting.getAll()
@@ -67,7 +67,7 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
 
   await t.test("a target's own metadata query doesn't pick up folder-scoped settings", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "a.html", abstract: {}, metadata: { status: "published" } })
+    database.target.create({ path: "a.html", metadata: { status: "published" } })
     database.setting.accumulate("", { title: "Site" }, "settings.md")
 
     const target = database.target.get("a.html")
@@ -95,7 +95,7 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
 
   await t.test("deleteBySource stales the dependents that read the row it touched", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "nav.html", metadata: {} })
     database.setting.accumulate("", { title: "Initial" }, "settings.md")
     database.target.markFresh("nav.html")
 
@@ -119,7 +119,7 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
 
   await t.test("getByFolder: reading a specific ancestor index tracks a dependency scoped to exactly that folder", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "nav.html", metadata: {} })
     database.setting.accumulate("", { theme: "Initial" }, "settings.md")
     database.target.markFresh("nav.html")
 
@@ -143,7 +143,7 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
 
   await t.test("getByFolder: iterating the whole array tracks every ancestor level it touches", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "nav.html", metadata: {} })
     database.setting.accumulate("", { theme: "Initial" }, "settings.md")
     database.target.markFresh("nav.html")
 
@@ -158,7 +158,7 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
 
   await t.test("getByFolder: a change to a different, already-known label does not stale a dependent that only read another label", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "nav.html", metadata: {} })
     database.setting.accumulate("", { theme: "Initial" }, "settings.md")
     // A separate source for stylesheets, never touching "theme" at all -
     // accumulate() re-stales every label it touches on every call
@@ -202,7 +202,7 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
 
   await t.test("getByFolder: merely enumerating keys (no value read) does not register a dependency", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "nav.html", metadata: {} })
     database.setting.accumulate("", { title: "My Site" }, "settings.md")
     database.target.markFresh("nav.html")
 
@@ -230,10 +230,10 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
 
   await t.test("accumulate: a label appearing for the first time in a folder's ancestor chain stales every existing target under that folder, recursively", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "index.html", abstract: {}, metadata: {} })
-    database.target.create({ path: "blog/index.html", abstract: {}, metadata: {} })
-    database.target.create({ path: "blog/travel/index.html", abstract: {}, metadata: {} })
-    database.target.create({ path: "products/index.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "index.html", metadata: {} })
+    database.target.create({ path: "blog/index.html", metadata: {} })
+    database.target.create({ path: "blog/travel/index.html", metadata: {} })
+    database.target.create({ path: "products/index.html", metadata: {} })
     for (const path of ["index.html", "blog/index.html", "blog/travel/index.html", "products/index.html"]) {
       database.target.markFresh(path)
     }
@@ -263,7 +263,7 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
 
   await t.test("accumulate: a source that stops contributing entirely removes everything it contributed and stales real dependents", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "nav.html", metadata: {} })
     database.setting.accumulate("blog", { theme: "Dark", stylesheets: "reset.css" }, "blog/settings.md")
     database.target.markFresh("nav.html")
 
@@ -278,8 +278,8 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
 
   await t.test("accumulate: a source that drops one label while keeping another only stales the dropped label's dependents", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "theme-reader.html", abstract: {}, metadata: {} })
-    database.target.create({ path: "stylesheets-reader.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "theme-reader.html", metadata: {} })
+    database.target.create({ path: "stylesheets-reader.html", metadata: {} })
     database.setting.accumulate("blog", { theme: "Dark", stylesheets: "reset.css" }, "blog/settings.md")
     database.target.markFresh("theme-reader.html")
     database.target.markFresh("stylesheets-reader.html")
@@ -301,7 +301,7 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
 
   await t.test("accumulate: re-contributing the identical value does not stale a dependent, but a real change does", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "reader.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "reader.html", metadata: {} })
     database.setting.accumulate("blog", { theme: "Dark" }, "blog/settings.md")
     database.target.markFresh("reader.html")
 
@@ -321,7 +321,7 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
 
   await t.test("accumulate: dropping a label entirely does not resurrect it as a fresh 'first appearance' if re-added later", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "blog/index.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "blog/index.html", metadata: {} })
     database.target.markFresh("blog/index.html")
 
     database.setting.accumulate("blog", { theme: "Dark" }, "blog/settings.md") // first appearance - stales blog/index.html (under blog's subtree)

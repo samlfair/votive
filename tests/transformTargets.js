@@ -15,7 +15,7 @@ async function withTempSourceFolder(run) {
   }
 }
 
-test("readAbstracts: a transformFile processor's result persists to the target's abstract", async () => {
+test("transformTargets: a transformFile processor's result persists to the target", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "page.md"), "content")
 
@@ -25,13 +25,13 @@ test("readAbstracts: a transformFile processor's result persists to the target's
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: () => ({ dir: [], name: "page", ext: ".html" }),
         processors: [{
+          router: () => ({ dir: [], name: "page", ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
           writeFile: () => ({ data: "" }),
-          readFile: () => ({ abstract: { tag: "p", children: [] }, metadata: {} }),
-          transformFile: (abstract) => ({ abstract: { ...abstract, transformed: true } })
+          readFile: () => ({ data: "content", metadata: { tag: "p" } }),
+          transformFile: (target) => ({ metadata: { ...target.metadata, transformed: "yes" } })
         }]
       }]
     }
@@ -39,15 +39,14 @@ test("readAbstracts: a transformFile processor's result persists to the target's
     const queue = await bundler(config)
     const first = await queue()
 
-    assert.deepEqual(first.cache.target.get("page.html").abstract, {
+    assert.deepEqual(first.cache.target.get("page.html").metadata, {
       tag: "p",
-      children: [],
-      transformed: true
+      transformed: "yes"
     })
   })
 })
 
-test("readAbstracts: multiple transformer processors chain, each seeing the previous one's output", async () => {
+test("transformTargets: multiple transformer processors chain, each seeing the previous one's output", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "page.md"), "content")
 
@@ -57,19 +56,19 @@ test("readAbstracts: multiple transformer processors chain, each seeing the prev
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: () => ({ dir: [], name: "page", ext: ".html" }),
         processors: [
           {
+            router: () => ({ dir: [], name: "page", ext: ".html" }),
             extensions: [".md", ".html"],
             format: "text",
             writeFile: () => ({ data: "" }),
-            readFile: () => ({ abstract: { steps: [] }, metadata: {} }),
-            transformFile: (abstract) => ({ abstract: { steps: [...abstract.steps, "first"] } })
+            readFile: () => ({ data: "content", metadata: { steps: [] } }),
+            transformFile: (target) => ({ metadata: { steps: [...target.metadata.steps, "first"] } })
           },
           {
             extensions: [".md", ".html"],
             format: "text",
-            transformFile: (abstract) => ({ abstract: { steps: [...abstract.steps, "second"] } })
+            transformFile: (target) => ({ metadata: { steps: [...target.metadata.steps, "second"] } })
           }
         ]
       }]
@@ -78,11 +77,11 @@ test("readAbstracts: multiple transformer processors chain, each seeing the prev
     const queue = await bundler(config)
     const first = await queue()
 
-    assert.deepEqual(first.cache.target.get("page.html").abstract.steps, ["first", "second"])
+    assert.deepEqual(first.cache.target.get("page.html").metadata.steps, ["first", "second"])
   })
 })
 
-test("readAbstracts: a transformFile hook can still queue jobs alongside transforming the abstract", async () => {
+test("transformTargets: a transformFile hook can still queue urls alongside transforming the target", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "page.md"), "content")
 
@@ -92,15 +91,15 @@ test("readAbstracts: a transformFile hook can still queue jobs alongside transfo
       verbose: false,
       plugins: [{
         name: "test-plugin",
-        router: () => ({ dir: [], name: "page", ext: ".html" }),
         processors: [{
+          router: () => ({ dir: [], name: "page", ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
           writeFile: () => ({ data: "" }),
-          readFile: () => ({ abstract: { scanned: false }, metadata: {} }),
-          transformFile: (abstract) => ({
-            abstract: { scanned: true },
-            urls: [{ data: "https://example.com", runner: "text", target: "page.html" }]
+          readFile: () => ({ data: "content", metadata: { scanned: "no" } }),
+          transformFile: () => ({
+            metadata: { scanned: "yes" },
+            urls: [{ url: "https://example.com", target: "page.html" }]
           })
         }]
       }]
@@ -109,6 +108,6 @@ test("readAbstracts: a transformFile hook can still queue jobs alongside transfo
     const queue = await bundler(config)
     const first = await queue()
 
-    assert.deepEqual(first.cache.target.get("page.html").abstract, { scanned: true })
+    assert.deepEqual(first.cache.target.get("page.html").metadata, { scanned: "yes" })
   })
 })

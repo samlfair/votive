@@ -21,13 +21,13 @@ async function withTempSourceFolder(run) {
 function recordingPlugin(seen, format = "text") {
   return {
     name: "recorder",
-    router: ({ name, dir }) => ({ name, dir, ext: ".html" }),
     processors: [{
+      router: ({ name, dir }) => ({ name, dir, ext: ".html" }),
       extensions: [format === "text" ? ".md" : ".bin"],
       format,
       readFile(source) {
         seen.push(source)
-        return { abstract: {}, metadata: {} }
+        return { metadata: {} }
       },
       writeFile: () => ({ data: "" })
     }]

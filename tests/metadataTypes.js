@@ -22,41 +22,41 @@ test("metadata values round-trip as real JS types, not JSON-encoded strings", as
 
   await t.test("target.get", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "a.html", abstract: {}, metadata: seedMetadata })
+    database.target.create({ path: "a.html", metadata: seedMetadata })
     assertShape(database.target.get("a.html").metadata, "target.get")
   })
 
   await t.test("target.getAll", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "a.html", abstract: {}, metadata: seedMetadata })
+    database.target.create({ path: "a.html", metadata: seedMetadata })
     const target = database.target.getAll().find(t => t.path === "a.html")
     assertShape(target.metadata, "target.getAll")
   })
 
   await t.test("target.getStale", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "a.html", abstract: {}, metadata: seedMetadata })
+    database.target.create({ path: "a.html", metadata: seedMetadata })
     const target = database.target.getStale().find(t => t.path === "a.html")
     assertShape(target.metadata, "target.getStale")
   })
 
   await t.test("target.getByFolder - empty filter compiles to (1)", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "a.html", abstract: {}, metadata: seedMetadata })
+    database.target.create({ path: "a.html", metadata: seedMetadata })
     const results = database.target.getByFolder({ query: {}, dependent: "d.html" })
     assertShape(results.find(t => t.path === "a.html").metadata, "getByFolder (empty)")
   })
 
   await t.test("target.getByFolder - compiled filter path (compileFilter)", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "a.html", abstract: {}, metadata: seedMetadata })
+    database.target.create({ path: "a.html", metadata: seedMetadata })
     const results = database.target.getByFolder({ query: { active: true }, dependent: "d.html" })
     assertShape(results.find(t => t.path === "a.html").metadata, "getByFolder (filtered)")
   })
 
   await t.test("target.getByFolder", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "a.html", abstract: {}, metadata: seedMetadata })
+    database.target.create({ path: "a.html", metadata: seedMetadata })
     const results = database.target.getByFolder({ dependent: "d.html" })
     assertShape(results.find(t => t.path === "a.html").metadata, "target.getByFolder")
   })

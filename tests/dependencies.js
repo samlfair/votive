@@ -11,8 +11,8 @@ function isStale(database, targetPath) {
 test("dependencies: folder/folder_recursive typing and invalidation", async (t) => {
   await t.test("getByFolder registers a 'folder' dependency and returns scoped targets", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "blog/a.html", abstract: {}, metadata: { title: "A" } })
-    database.target.create({ path: "blog/sub/b.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "blog/a.html", metadata: { title: "A" } })
+    database.target.create({ path: "blog/sub/b.html", metadata: {} })
 
     const results = database.target.getByFolder({ folder: "blog", recursive: false, dependent: "nav.html" })
 
@@ -34,73 +34,73 @@ test("dependencies: folder/folder_recursive typing and invalidation", async (t) 
 
   await t.test("a new target in a non-recursive 'folder' scope stales the dependent", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "blog/a.html", abstract: {}, metadata: { title: "A" } })
-    database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "blog/a.html", metadata: { title: "A" } })
+    database.target.create({ path: "nav.html", metadata: {} })
     database.target.markFresh("nav.html")
 
     database.target.getByFolder({ folder: "blog", recursive: false, dependent: "nav.html" })
     assert.equal(isStale(database, "nav.html"), false)
 
-    database.target.create({ path: "blog/b.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "blog/b.html", metadata: {} })
     assert.equal(isStale(database, "nav.html"), true)
   })
 
   await t.test("a non-recursive 'folder' dependency ignores changes in a deeper subfolder", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "blog/a.html", abstract: {}, metadata: { title: "A" } })
-    database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "blog/a.html", metadata: { title: "A" } })
+    database.target.create({ path: "nav.html", metadata: {} })
     database.target.markFresh("nav.html")
 
     database.target.getByFolder({ folder: "blog", recursive: false, dependent: "nav.html" })
-    database.target.create({ path: "blog/sub/deep.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "blog/sub/deep.html", metadata: {} })
 
     assert.equal(isStale(database, "nav.html"), false)
   })
 
   await t.test("a 'folder_recursive' dependency on an ancestor catches a change several levels deeper", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "blog/a.html", abstract: {}, metadata: { title: "A" } })
-    database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "blog/a.html", metadata: { title: "A" } })
+    database.target.create({ path: "nav.html", metadata: {} })
     database.target.markFresh("nav.html")
 
     database.target.getByFolder({ folder: "", recursive: true, dependent: "nav.html" })
-    database.target.create({ path: "blog/sub/deep.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "blog/sub/deep.html", metadata: {} })
 
     assert.equal(isStale(database, "nav.html"), true)
   })
 
   await t.test("changing a property a folder dependent actually read stales it (lazy per-property tracking)", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "blog/a.html", abstract: {}, metadata: { status: "draft" } })
-    database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "blog/a.html", metadata: { status: "draft" } })
+    database.target.create({ path: "nav.html", metadata: {} })
     database.target.markFresh("nav.html")
 
     const results = database.target.getByFolder({ folder: "blog", recursive: false, dependent: "nav.html" })
     results.forEach(target => target.metadata.status) // simulate a template reading this property
 
-    database.target.create({ path: "blog/a.html", abstract: {}, metadata: { status: "published" } })
+    database.target.create({ path: "blog/a.html", metadata: { status: "published" } })
 
     assert.equal(isStale(database, "nav.html"), true)
   })
 
   await t.test("changing a property a folder dependent never read does NOT stale it", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "blog/a.html", abstract: {}, metadata: { status: "draft", views: 1 } })
-    database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "blog/a.html", metadata: { status: "draft", views: 1 } })
+    database.target.create({ path: "nav.html", metadata: {} })
     database.target.markFresh("nav.html")
 
     const results = database.target.getByFolder({ folder: "blog", recursive: false, dependent: "nav.html" })
     results.forEach(target => target.metadata.status) // only reads `status`, never `views`
 
-    database.target.create({ path: "blog/a.html", abstract: {}, metadata: { status: "draft", views: 2 } })
+    database.target.create({ path: "blog/a.html", metadata: { status: "draft", views: 2 } })
 
     assert.equal(isStale(database, "nav.html"), false)
   })
 
   await t.test("deleting a target stales its folder's dependents", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "blog/a.html", abstract: {}, metadata: { title: "A" } })
-    database.target.create({ path: "nav.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "blog/a.html", metadata: { title: "A" } })
+    database.target.create({ path: "nav.html", metadata: {} })
     database.target.markFresh("nav.html")
 
     database.target.getByFolder({ folder: "blog", recursive: false, dependent: "nav.html" })
@@ -122,8 +122,8 @@ test("dependencies: folder/folder_recursive typing and invalidation", async (t) 
 
   await t.test("deleting a target cleans up its own metadata and dependency rows via the cleanup trigger", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "a.html", abstract: {}, metadata: { title: "A" } })
-    database.target.create({ path: "b.html", abstract: {}, metadata: {} })
+    database.target.create({ path: "a.html", metadata: { title: "A" } })
+    database.target.create({ path: "b.html", metadata: {} })
     const tracked = database.target.getWithTrackers("a.html", "b.html")
     tracked.metadata.title // simulate a template reading this, registering a type='target' dependency
 
@@ -138,31 +138,31 @@ test("dependencies: folder/folder_recursive typing and invalidation", async (t) 
 
   await t.test("editing an existing target's own metadata marks the target itself stale, not just its dependents", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "home.html", abstract: { type: "page" }, metadata: { title: "Home" } })
+    database.target.create({ path: "home.html", data: "page", metadata: { title: "Home" } })
     database.target.markFresh("home.html")
     assert.equal(isStale(database, "home.html"), false)
 
-    database.target.create({ path: "home.html", abstract: { type: "page" }, metadata: { title: "Home Updated" } })
+    database.target.create({ path: "home.html", data: "page", metadata: { title: "Home Updated" } })
 
     assert.equal(isStale(database, "home.html"), true)
   })
 
-  await t.test("editing an existing target's abstract also marks the target itself stale", () => {
+  await t.test("editing an existing target's data also marks the target itself stale", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "home.html", abstract: { type: "page" }, metadata: {} })
+    database.target.create({ path: "home.html", data: "page", metadata: {} })
     database.target.markFresh("home.html")
 
-    database.target.create({ path: "home.html", abstract: { type: "page", extra: true }, metadata: {} })
+    database.target.create({ path: "home.html", data: "page-extra", metadata: {} })
 
     assert.equal(isStale(database, "home.html"), true)
   })
 
   await t.test("re-creating an existing target with unchanged data does NOT mark it stale", () => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "home.html", abstract: { type: "page" }, metadata: { title: "Home" } })
+    database.target.create({ path: "home.html", data: "page", metadata: { title: "Home" } })
     database.target.markFresh("home.html")
 
-    database.target.create({ path: "home.html", abstract: { type: "page" }, metadata: { title: "Home" } })
+    database.target.create({ path: "home.html", data: "page", metadata: { title: "Home" } })
 
     assert.equal(isStale(database, "home.html"), false)
   })
