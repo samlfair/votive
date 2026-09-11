@@ -68,3 +68,35 @@ test("metadata values round-trip as real JS types, not JSON-encoded strings", as
     assert.deepEqual(settings.stylesheets[0], ["reset.css", "typography.css"])
   })
 })
+
+test("metadata booleans survive a round trip", async (t) => {
+  await t.test("a false value reads back as false, not 0", () => {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "a.html", metadata: { published: true, draft: false, count: 0 } })
+
+    const metadata = database.target.get("a.html").metadata
+    assert.equal(metadata.published, true)
+    assert.equal(metadata.draft, false)
+    // A real 0 must stay a number - json_each reports its type as
+    // 'integer', not 'false'.
+    assert.equal(metadata.count, 0)
+  })
+
+  await t.test("re-creating a target with the same booleans stales nothing", () => {
+    // The round-trip mismatch was a staling bug, not just a typing one:
+    // the plugin wrote `false`, the database returned `0`, and
+    // target.create's deep compare saw a change on every single build.
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "page.html", metadata: { menu_item: false } })
+    database.target.create({ path: "reader.html", metadata: {} })
+
+    const tracked = database.target.getWithTrackers("page.html", "reader.html")
+    void tracked.metadata.menu_item
+    database.target.markFresh("reader.html")
+
+    database.target.create({ path: "page.html", metadata: { menu_item: false } })
+
+    const stale = database.target.getStale().map(target => target.path)
+    assert.ok(!stale.includes("reader.html"), `reader.html should not be stale, got ${stale.join(", ")}`)
+  })
+})
