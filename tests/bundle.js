@@ -1010,3 +1010,36 @@ test("incremental: two build({changed}) calls during a build coalesce into one p
     assert.ok(seen.includes("b.md"), `b.md should be read, got ${seen.join(", ")}`)
   })
 })
+
+test("writeTargets: the \"0\" placeholder is marked fresh, not left stale forever", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "settings.md"), "unrouted")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          // Returning false routes the file nowhere, collapsing its
+          // target to the "0" placeholder.
+          router: (info) => info.name === "settings" ? false : { dir: info.dir, name: info.name, ext: ".html" },
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => ({ data: source.text, metadata: {} }),
+          writeFile: (target) => ({ data: target.data ?? "" })
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    await site.build({ defer: false })
+
+    // Nothing is ever written for "0", but it still has to be marked
+    // fresh - otherwise getStale() is never empty and every build
+    // reports work it isn't doing.
+    const stale = site.database.target.getStale().map(target => target.path)
+    assert.ok(!stale.includes("0"), `"0" should not be stale, got ${stale.join(", ")}`)
+  })
+})
