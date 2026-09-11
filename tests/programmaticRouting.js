@@ -184,7 +184,7 @@ test("readFile (buffer format): a returned filePath does not move the target eit
   })
 })
 
-test("readFile: an api.url.create() call attributes to the routed target path", async () => {
+test("readFile: an api.url() call attributes to the routed target path", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "page.md"), "content")
 
@@ -199,11 +199,12 @@ test("readFile: an api.url.create() call attributes to the routed target path", 
           extensions: [".md", ".html"],
           format: "text",
           writeFile: (target) => ({ data: `written:${target.path}` }),
+          readURL: () => ({ title: "Thing" }),
           readFile: (source, { api }) => {
-            // The api is real and pre-bound to targetPath, so this runs
-            // immediately rather than being queued - the path it
-            // attributes to is settled before read() is even called.
-            api.url.create("https://example.com/thing", { title: "Thing" })
+            // The api is real and pre-bound to targetPath - the path the
+            // request attributes to is settled before read() is even
+            // called.
+            api.url("https://example.com/thing")
             return { metadata: {} }
           }
         }]

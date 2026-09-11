@@ -130,7 +130,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
     })
   })
 
-  await t.test("api.url.create() calls made in readFile (buffer format) attribute to the routed path, and are skipped on a cache hit", async () => {
+  await t.test("api.url() calls made in readFile (buffer format) attribute to the routed path, and are skipped on a cache hit", async () => {
     await withTempSourceFolder(async (sourceFolder) => {
       await writeFile(path.join(sourceFolder, "photo.bin"), "binary content")
 
@@ -143,9 +143,10 @@ test("readBuffers: deferred buffer processing", async (t) => {
           extensions: [".bin"],
           format: "buffer",
           router: ({ name, dir, ext }) => ({ name, dir, ext }),
+          readURL: () => ({ title: "Photo" }),
           readFile(source, { api }) {
             readFileCalls++
-            api.url.create("https://example.com/photo", { title: "Photo" })
+            api.url("https://example.com/photo")
             return { metadata: {} }
           }
         }

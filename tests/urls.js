@@ -5,7 +5,7 @@ import createDatabase from "../lib/createDatabase.js"
 test("urls: redirect/canonical lookup and failure tracking", async (t) => {
   await t.test("get() finds a cached result via the original, redirect, or canonical URL", () => {
     const database = createDatabase(":memory:")
-    database.url.create("https://example.com/a", { title: "A" }, undefined, {
+    database.url.create("https://example.com/a", { title: "A" }, {
       redirect: "https://example.com/a-redirected",
       canonical: "https://example.com/canonical-a"
     })

@@ -109,15 +109,24 @@ test("dependencies: folder/folder_recursive typing and invalidation", async (t) 
     assert.equal(isStale(database, "nav.html"), true)
   })
 
-  await t.test("url.create with a target records a type='url' dependency", () => {
+  await t.test("url.request records a type='url' dependency, and url.create stales every target that asked", () => {
     const database = createDatabase(":memory:")
-    database.url.create("https://example.com/embed", { title: "Example" }, "post.html")
+    database.target.create({ path: "post.html", metadata: {} })
+    database.target.create({ path: "other.html", metadata: {} })
+    database.target.markFresh("post.html")
+    database.target.markFresh("other.html")
+
+    database.url.request("https://example.com/embed", "post.html", { readURL: () => ({}) })
 
     const rows = database.dependency.getAllByTarget("https://example.com/embed")
     assert.deepEqual(rows.map(r => ({ dependent: r.dependent, type: r.type })), [
       { dependent: "post.html", type: "url" }
     ])
+
+    database.url.create("https://example.com/embed", { title: "Example" })
     assert.deepEqual(database.url.get("https://example.com/embed"), { title: "Example" })
+    const stale = database.target.getStale().map(target => target.path)
+    assert.deepEqual(stale, ["post.html"])
   })
 
   await t.test("deleting a target cleans up its own metadata and dependency rows via the cleanup trigger", () => {

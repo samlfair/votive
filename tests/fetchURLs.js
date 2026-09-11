@@ -27,16 +27,18 @@ function pluginConfigFor(fetcher) {
 }
 
 /**
- * fetchURLs now receives the { task, processor } records applyReadResult
- * builds - the processor that asked for the fetch travels with the
- * request, so there is nothing to match on by extension.
+ * The way a hook asks: api.url(url) -> database.url.request(). The
+ * processor that asked travels with the request, so there is nothing to
+ * match on by extension, and only a processor with a readURL can cause
+ * a fetch at all.
  */
-function requestFor(url, processor, target) {
-  return { task: { url, ...(target ? { target } : {}) }, processor: processor ?? {} }
+function request(database, url, processor, target = "") {
+  database.url.request(url, target, processor)
+  return url
 }
 
 test("fetchURLs: only jobs a plugin has claimed are fetched at all", async (t) => {
-  await t.test("a job with no matching plugin is never fetched, returns runFetches: null", async () => {
+  await t.test("a url asked for by a processor with no readURL is never fetched, and runFetches() reports nothing done", async () => {
     let requests = 0
     const { baseUrl, close } = await withServer((req, res) => {
       requests++
@@ -46,12 +48,14 @@ test("fetchURLs: only jobs a plugin has claimed are fetched at all", async (t) =
 
     try {
       const database = createDatabase(":memory:")
-      const job = requestFor(`${baseUrl}/page`, {})
-      const { pending, runFetches } = await fetchURLs([job], { plugins: [] }, database)
+      request(database, `${baseUrl}/page`, {}, "post.html")
+      const { runFetches } = fetchURLs({ plugins: [] }, database)
 
+      assert.equal(await runFetches(), 0)
       assert.equal(requests, 0)
-      assert.equal(pending, undefined)
-      assert.equal(runFetches, null)
+      // It still registered the dependency: the page gets rebuilt if
+      // someone with a readURL fetches it later.
+      assert.equal(database.dependency.getAllByTarget(`${baseUrl}/page`).length, 1)
     } finally {
       await close()
     }
@@ -68,19 +72,18 @@ test("fetchURLs: only jobs a plugin has claimed are fetched at all", async (t) =
     try {
       const database = createDatabase(":memory:")
       const readURL = async (response) => ({ optimized: true, raw: await response.text() })
-      const job = requestFor(`${baseUrl}/asset`, { readURL }, "post.html")
-      const { pending, runFetches } = await fetchURLs([job], pluginConfigFor(readURL), database)
+      const url = request(database, `${baseUrl}/asset`, { readURL }, "post.html")
+      const { runFetches } = fetchURLs(pluginConfigFor(readURL), database)
 
       assert.equal(requests, 0)
-      assert.equal(pending.length, 1)
-      assert.equal(database.url.get(job.task.url), undefined)
+      assert.equal(database.url.get(url), undefined)
 
-      await runFetches()
+      assert.equal(await runFetches(), 1)
 
       assert.equal(requests, 1)
-      assert.deepEqual(database.url.get(job.task.url), { optimized: true, raw: "raw-bytes" })
+      assert.deepEqual(database.url.get(url), { optimized: true, raw: "raw-bytes" })
 
-      const deps = database.dependency.getAllByTarget(job.task.url)
+      const deps = database.dependency.getAllByTarget(url)
       assert.deepEqual(deps.map(d => ({ dependent: d.dependent, type: d.type })), [
         { dependent: "post.html", type: "url" }
       ])
@@ -103,11 +106,10 @@ test("fetchURLs: only jobs a plugin has claimed are fetched at all", async (t) =
     try {
       const database = createDatabase(":memory:")
       const readURL = async (response) => ({ body: await response.text() })
-      const job = requestFor(`${baseUrl}/start`, { readURL })
+      request(database, `${baseUrl}/start`, { readURL })
       const config = pluginConfigFor(readURL)
 
-      const { runFetches } = await fetchURLs([job], config, database)
-      await runFetches()
+      await fetchURLs(config, database).runFetches()
 
       assert.deepEqual(database.url.get(`${baseUrl}/start`), { body: "landed" })
       assert.deepEqual(database.url.get(`${baseUrl}/end`), { body: "landed" })
@@ -125,14 +127,13 @@ test("fetchURLs: only jobs a plugin has claimed are fetched at all", async (t) =
     try {
       const database = createDatabase(":memory:")
       const readURL = async (response) => ({ body: await response.text() })
-      const job = requestFor(`${baseUrl}/missing`, { readURL })
+      const url = request(database, `${baseUrl}/missing`, { readURL })
       const config = pluginConfigFor(readURL)
 
-      const { runFetches } = await fetchURLs([job], config, database)
-      await runFetches()
+      await fetchURLs(config, database).runFetches()
 
-      assert.equal(database.url.get(job.task.url), undefined)
-      const status = database.url.getStatus(job.task.url)
+      assert.equal(database.url.get(url), undefined)
+      const status = database.url.getStatus(url)
       assert.equal(status.failureCount, 1)
       assert.ok(status.failedAt)
     } finally {
@@ -151,17 +152,16 @@ test("fetchURLs: only jobs a plugin has claimed are fetched at all", async (t) =
 
     try {
       const readURL = async (response) => ({ body: await response.text() })
-      const job = requestFor(`${baseUrl}/flaky`, { readURL })
+      const url = request(database, `${baseUrl}/flaky`, { readURL })
       const config = pluginConfigFor(readURL)
 
-      const first = await fetchURLs([job], config, database)
-      await first.runFetches()
+      assert.equal(await fetchURLs(config, database).runFetches(), 1)
       assert.equal(requests, 1)
 
       // failureCount is 1, so the cooldown is a full day - nowhere near
-      // elapsed, so this job shouldn't even reach the pending list again.
-      const second = await fetchURLs([job], config, database)
-      assert.equal(second.runFetches, null)
+      // elapsed, so asking again fetches nothing.
+      request(database, url, { readURL })
+      assert.equal(await fetchURLs(config, database).runFetches(), 0)
       assert.equal(requests, 1)
     } finally {
       await close()
@@ -179,13 +179,12 @@ test("fetchURLs: only jobs a plugin has claimed are fetched at all", async (t) =
     try {
       const database = createDatabase(":memory:")
       const readURL = async (response) => ({ body: await response.text() })
-      const job = requestFor(`${baseUrl}/slow`, { readURL })
+      const url = request(database, `${baseUrl}/slow`, { readURL })
       const config = { ...pluginConfigFor(readURL), urlFetchTimeout: 50 }
 
-      const { runFetches } = await fetchURLs([job], config, database)
-      await runFetches()
+      await fetchURLs(config, database).runFetches()
 
-      const status = database.url.getStatus(job.task.url)
+      const status = database.url.getStatus(url)
       assert.equal(status.failureCount, 1)
     } finally {
       await close()

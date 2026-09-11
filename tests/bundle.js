@@ -73,11 +73,9 @@ test("bundle: buffer processing and URL fetches a plugin claims are both deferre
               format: "text",
               writeFile: () => ({ data: "" }),
               readURL: (data) => ({ fetched: data }),
-              readFile(source) {
-                return {
-                                    metadata: {},
-                  urls: [{ url: source.text.trim(), target: "page.html", extension: ".md" }]
-                }
+              readFile(source, { api }) {
+                api.url(source.text.trim())
+                return { metadata: {} }
               }
             }
           ]
@@ -93,11 +91,13 @@ test("bundle: buffer processing and URL fetches a plugin claims are both deferre
       assert.equal(fetchServerHits, 0)
 
       // A build with the default runs them, and `deferred` resolves once
-      // they and their follow-up build are done. The sources have to be
-      // read again for that: defer: false doesn't park the work, it skips
-      // it, and a pass with no stale source has nothing to defer.
+      // they and their follow-up build are done. The buffer has to be
+      // read again for that: defer: false doesn't park buffer work, it
+      // skips it, and a pass with no stale source has nothing to defer.
+      // A url is different - the request stays queued until the next
+      // pass that runs deferred work - so page.md is left alone and the
+      // one fetch below is the one queued above.
       await writeFile(path.join(sourceFolder, "photo.bin"), "binary content, changed")
-      await writeFile(path.join(sourceFolder, "page.md"), `${baseUrl}/asset?changed`)
       await (await site.build()).deferred
       assert.equal(bufferReadCalls, 1)
       assert.equal(fetchServerHits, 1)
@@ -131,12 +131,9 @@ test("bundle: a deferred fetch auto-triggers a rebuild that picks up the newly-s
             format: "text",
             writeFile: () => { writeFileCalls++; return { data: "" } },
             readURL: (data) => ({ fetched: data }),
-            readFile(source) {
-              return {
-                data: "page",
-                metadata: {},
-                urls: [{ url: source.text.trim(), target: "page.html", extension: ".md" }]
-              }
+            readFile(source, { api }) {
+              api.url(source.text.trim())
+              return { data: "page", metadata: {} }
             }
           }]
         }]
@@ -494,10 +491,12 @@ test("hooks: a readFolder returning urls but no targets still has its urls fetch
             extensions: [".md", ".html"],
             format: "text",
             readFile: (source) => ({ data: source.text, metadata: {} }),
-            // urls, deliberately with no `targets` alongside them.
+            // A url, deliberately with no `targets` alongside it.
             // Note the trailing slash: readFolder receives "blog/", not "blog".
-            readFolder: ({ path: folderPath }) =>
-              folderPath.startsWith("blog") ? { urls: [{ url: `${server.baseUrl}/from-folder` }] } : {},
+            readFolder: ({ path: folderPath }, { api }) => {
+              if (folderPath.startsWith("blog")) api.url(`${server.baseUrl}/from-folder`)
+              return {}
+            },
             readURL: async (response) => ({ body: await response.text() }),
             writeFile: (target) => ({ data: target.data ?? "" })
           }]
@@ -751,10 +750,9 @@ test("hooks: a readURL that never reads the body leaves it unread", async () => 
       bodyRead = false
       return { status: response.status }
     }
-    const request = { task: { url: `${server.baseUrl}/x` }, processor: { readURL } }
+    database.url.request(`${server.baseUrl}/x`, "", { readURL })
 
-    const { runFetches } = await fetchURLs([request], { plugins: [] }, database)
-    await runFetches()
+    await fetchURLs({ plugins: [] }, database).runFetches()
 
     assert.equal(bodyRead, false)
     assert.deepEqual(database.url.get(`${server.baseUrl}/x`), { status: 200 })
