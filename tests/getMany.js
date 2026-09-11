@@ -32,19 +32,30 @@ test("target.getMany filters", async (t) => {
     stop()
   })
 
-  await t.test("bare scalar also matches inside an array field", () => {
+  await t.test("'~' is contains: the field is an array with the value as an element", () => {
     const database = createDatabase(":memory:")
     seed(database, [
       { path: "a.html", metadata: { tags: ["AI", "Crypto"] } },
       { path: "b.html", metadata: { tags: ["Crypto"] } },
+      { path: "c.html", metadata: { tags: "AI" } },
     ])
 
     const stop = stopwatch()
-    assert.deepEqual(paths(database, { tags: "AI" }), ["a.html"])
+    assert.deepEqual(paths(database, { tags: { "~": "AI" } }), ["a.html"])
     stop()
   })
 
-  await t.test("bare array is 'all': must contain every listed element", () => {
+  await t.test("a bare scalar against an array field is equality, not contains", () => {
+    const database = createDatabase(":memory:")
+    seed(database, [
+      { path: "a.html", metadata: { tags: ["AI", "Crypto"] } },
+      { path: "b.html", metadata: { tags: "AI" } },
+    ])
+
+    assert.deepEqual(paths(database, { tags: "AI" }), ["b.html"])
+  })
+
+  await t.test("a bare array is '~' with an array: must contain every listed element", () => {
     const database = createDatabase(":memory:")
     seed(database, [
       { path: "a.html", metadata: { tags: ["AI", "Crypto", "Web3"] } },
@@ -56,20 +67,19 @@ test("target.getMany filters", async (t) => {
     stop()
   })
 
-  await t.test("explicit 'all' operator behaves the same as a bare array", () => {
+  await t.test("'~' with an array behaves the same as a bare array", () => {
     const database = createDatabase(":memory:")
     seed(database, [
       { path: "a.html", metadata: { tags: ["AI", "Crypto"] } },
       { path: "b.html", metadata: { tags: ["AI"] } },
     ])
 
-
     const stop = stopwatch()
-    assert.deepEqual(paths(database, { tags: { all: ["AI", "Crypto"] } }), ["a.html"])
+    assert.deepEqual(paths(database, { tags: { "~": ["AI", "Crypto"] } }), ["a.html"])
     stop()
   })
 
-  await t.test("'!=' negates equality-or-contains, including missing fields", () => {
+  await t.test("'!' under a field negates equality, including missing fields (what '!=' used to be)", () => {
     const database = createDatabase(":memory:")
     seed(database, [
       { path: "a.html", metadata: { status: "published" } },
@@ -78,7 +88,7 @@ test("target.getMany filters", async (t) => {
     ])
 
     const stop = stopwatch()
-    assert.deepEqual(paths(database, { status: { "!=": "published" } }).sort(), ["b.html", "c.html"])
+    assert.deepEqual(paths(database, { status: { "!": "published" } }).sort(), ["b.html", "c.html"])
     stop()
   })
 
@@ -111,21 +121,27 @@ test("target.getMany filters", async (t) => {
     stop2()
   })
 
-  await t.test("'in' and 'any' match on overlap with a list", () => {
+  await t.test("'any of these' is '|' over the field (what 'in'/'any' used to be)", () => {
     const database = createDatabase(":memory:")
     seed(database, [
       { path: "a.html", metadata: { country: "Canada" } },
       { path: "b.html", metadata: { country: "France" } },
     ])
 
+    const stop = stopwatch()
+    assert.deepEqual(paths(database, { country: { "|": ["Canada", "USA"] } }), ["a.html"])
+    stop()
+  })
 
-    const stop1 = stopwatch()
-    assert.deepEqual(paths(database, { country: { in: ["Canada", "USA"] } }), ["a.html"])
-    stop1()
+  await t.test("a label spelled like a former operator is just a label", () => {
+    const database = createDatabase(":memory:")
+    seed(database, [
+      { path: "a.html", metadata: { in: "stock", all: "yes", any: 1 } },
+      { path: "b.html", metadata: { in: "transit" } },
+    ])
 
-    const stop2 = stopwatch()
-    assert.deepEqual(paths(database, { country: { any: ["Canada", "USA"] } }), ["a.html"])
-    stop2()
+    assert.deepEqual(paths(database, { in: "stock" }), ["a.html"])
+    assert.deepEqual(paths(database, { all: "yes", any: 1 }), ["a.html"])
   })
 
   await t.test("nested paths recurse into sub-objects", () => {
@@ -137,7 +153,7 @@ test("target.getMany filters", async (t) => {
 
     const stop = stopwatch()
      const results = paths(database, {
-      author: { expertise: ["AI", "Crypto"], country: { in: ["Canada", "USA"] } }
+      author: { expertise: ["AI", "Crypto"], country: { "|": ["Canada", "USA"] } }
     })
     stop()
     assert.deepEqual(results, ["a.html"])
@@ -238,14 +254,14 @@ test("target.getMany filters", async (t) => {
     assert.deepEqual(paths(database, { a: { b: { c: { d: { e: { f: { g: 1 } } } } } } }), ["deep.html"])
   })
 
-  await t.test("all against a scalar field treats it as a one-element array", () => {
+  await t.test("'~' against a scalar field does not match: contains needs an array", () => {
     const database = createDatabase(":memory:")
     seed(database, [
       { path: "a.html", metadata: { status: "published" } },
-      { path: "b.html", metadata: { status: "draft" } },
+      { path: "b.html", metadata: { status: ["published"] } },
     ])
 
-    assert.deepEqual(paths(database, { status: ["published"] }), ["a.html"])
+    assert.deepEqual(paths(database, { status: ["published"] }), ["b.html"])
   })
 
 })
