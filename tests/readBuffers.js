@@ -30,6 +30,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
         processor: {
           extensions: [".bin"],
           format: "buffer",
+          router: ({ name, dir, ext }) => ({ name, dir, ext }),
           readFile(source) {
             readFileCalls++
             return { metadata: { kind: "photo", width: 100 } }
@@ -41,7 +42,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
       const { sources } = await readSources(config, database, processors)
 
       assert.equal(readFileCalls, 0)
-      assert.equal(database.target.get("0"), undefined)
+      assert.equal(database.target.get("photo.bin"), undefined)
 
       const pending = sources.filter(s => s && s.readBuffer)
       assert.equal(pending.length, 1)
@@ -63,6 +64,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
         processor: {
           extensions: [".bin"],
           format: "buffer",
+          router: ({ name, dir, ext }) => ({ name, dir, ext }),
           readFile(source) {
             readFileCalls++
             return { metadata: { kind: "photo", width: 100 } }
@@ -79,7 +81,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
       await runBuffers()
 
       assert.equal(readFileCalls, 1)
-      const target = database.target.get("0")
+      const target = database.target.get("photo.bin")
       assert.deepEqual(target.metadata, { kind: "photo", width: 100 })
 
       // A second readSources pass sees the source as already handled.
@@ -100,6 +102,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
         processor: {
           extensions: [".bin"],
           format: "buffer",
+          router: ({ name, dir, ext }) => ({ name, dir, ext }),
           readFile() {
             readFileCalls++
             return { metadata: { seen: readFileCalls } }
@@ -139,6 +142,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
         processor: {
           extensions: [".bin"],
           format: "buffer",
+          router: ({ name, dir, ext }) => ({ name, dir, ext }),
           readFile(source, { api }) {
             readFileCalls++
             api.url.create("https://example.com/photo", { title: "Photo" })
@@ -153,12 +157,10 @@ test("readBuffers: deferred buffer processing", async (t) => {
       await readBuffers(first.sources, config, database).runBuffers()
 
       assert.equal(readFileCalls, 1)
-      // No router in this config, so routing sends it to the "0"
-      // placeholder - the same path the sibling tests above assert on.
-      assert.ok(database.target.get("0"))
+      assert.ok(database.target.get("photo.bin"))
 
       const deps = database.dependency.getAllByTarget("https://example.com/photo")
-      assert.ok(deps.some(d => d.dependent === "0"), "expected the routed target to depend on the linked URL")
+      assert.ok(deps.some(d => d.dependent === "photo.bin"), "expected the routed target to depend on the linked URL")
 
       // The api is the real one now, called during readFile - so a cache
       // hit, which doesn't run readFile at all, doesn't make the call
@@ -172,7 +174,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
       await readBuffers(second.sources, config, reopened).runBuffers()
 
       assert.equal(readFileCalls, 1)
-      assert.ok(reopened.target.get("0"), "the cached result is still applied")
+      assert.ok(reopened.target.get("photo.bin"), "the cached result is still applied")
       assert.equal(reopened.dependency.getAllByTarget("https://example.com/photo").length, 0)
     })
   })
@@ -188,6 +190,7 @@ test("readBuffers: deferred buffer processing", async (t) => {
         processor: {
           extensions: [".bin"],
           format: "buffer",
+          router: ({ name, dir, ext }) => ({ name, dir, ext }),
           readFile() {
             return { metadata: {} }
           }

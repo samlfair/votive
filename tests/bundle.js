@@ -1054,9 +1054,10 @@ test("incremental: two build({changed}) calls during a build coalesce into one p
   })
 })
 
-test("writeTargets: the \"0\" placeholder is marked fresh, not left stale forever", async () => {
+test("a source whose router returns false has no target: no row, no placeholder, and its source row records no target", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "settings.md"), "unrouted")
+    await writeFile(path.join(sourceFolder, "a.md"), "routed")
 
     const config = {
       sourceFolder,
@@ -1065,12 +1066,13 @@ test("writeTargets: the \"0\" placeholder is marked fresh, not left stale foreve
       plugins: [{
         name: "test-plugin",
         processors: [{
-          // Returning false routes the file nowhere, collapsing its
-          // target to the "0" placeholder.
+          // Returning false routes the file nowhere. It used to collapse
+          // to a "0" placeholder target that every such source overwrote
+          // in turn, and that api.targets() listed.
           router: (info) => info.name === "settings" ? false : { dir: info.dir, name: info.name, ext: ".html" },
           extensions: [".md", ".html"],
           format: "text",
-          readFile: (source) => ({ data: source.text, metadata: {} }),
+          readFile: (source) => ({ data: source.text, metadata: { from: source.path }, settings: { site: source.path } }),
           writeFile: (target) => ({ data: target.data ?? "" })
         }]
       }]
@@ -1079,10 +1081,18 @@ test("writeTargets: the \"0\" placeholder is marked fresh, not left stale foreve
     const site = await bundler(config)
     await site.build({ defer: false })
 
-    // Nothing is ever written for "0", but it still has to be marked
-    // fresh - otherwise getStale() is never empty and every build
-    // reports work it isn't doing.
-    const stale = site.database.target.getStale().map(target => target.path)
-    assert.ok(!stale.includes("0"), `"0" should not be stale, got ${stale.join(", ")}`)
+    const paths = site.database.target.getAll().map(target => target.path)
+    assert.deepEqual(paths, ["a.html"])
+    assert.equal(site.database.source.get("settings.md").target, null)
+    assert.equal(site.database.target.getStale().length, 0)
+
+    // Its settings still land - that is the whole point of such a file.
+    assert.deepEqual(site.database.setting.getByFolder("").site, [["settings.md"]])
+
+    // And deleting it removes them without touching any target.
+    await rm(path.join(sourceFolder, "settings.md"))
+    await site.build({ defer: false, changed: [], deleted: ["settings.md"] })
+    assert.equal(site.database.setting.getByFolder("").site, undefined)
+    assert.ok(site.database.target.get("a.html"))
   })
 })
