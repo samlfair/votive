@@ -111,10 +111,10 @@ test("source: a buffer processor gets no text, and reads bytes on demand", async
       plugins: [recordingPlugin(seen, "buffer")]
     }
 
-    const { runBuffers } = await (await bundler(config)).build({ defer: false })
+    const { deferred } = await (await bundler(config)).build()
     assert.equal(seen.length, 0, "a buffer read is deferred, not run during the build")
 
-    await runBuffers()
+    await deferred
 
     assert.equal(seen.length, 1)
     assert.equal(seen[0].text, undefined)
@@ -139,8 +139,8 @@ test("source: the same shape reaches both formats", async () => {
       plugins: [recordingPlugin(text), recordingPlugin(buffers, "buffer")]
     }
 
-    const { runBuffers } = await (await bundler(config)).build({ defer: false })
-    await runBuffers()
+    const { deferred } = await (await bundler(config)).build()
+    await deferred
 
     const shape = source => Object.keys(source).filter(key => key !== "text").sort()
     assert.deepEqual(shape(text[0]), ["buffer", "path", "stream", "target"])

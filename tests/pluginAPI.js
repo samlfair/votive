@@ -59,7 +59,7 @@ test("plugin callbacks receive a restricted api instead of the full database", a
     const b = seenAPI.target("b.html")
     assert.equal(b.metadata.name, "b.md")
 
-    const deps = first.database.dependency.getAllByTarget("b.html")
+    const deps = site.database.dependency.getAllByTarget("b.html")
     assert.ok(deps.some(d => d.dependent === "a.html"))
   })
 })
@@ -90,7 +90,7 @@ test("api.createTarget() from readFile() persists a new target", async () => {
     const site = await bundler(config)
     const first = await site.build({ defer: false })
 
-    assert.ok(first.database.target.get("generated.html"))
-    assert.equal(first.database.target.get("generated.html").metadata.generated, "yes")
+    assert.ok(site.database.target.get("generated.html"))
+    assert.equal(site.database.target.get("generated.html").metadata.generated, "yes")
   })
 })

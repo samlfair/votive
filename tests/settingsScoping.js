@@ -50,8 +50,8 @@ test("readSources: a settings contribution is scoped to the source file's own fo
     const site = await bundler(config)
     const first = await site.build({ defer: false })
 
-    const rootSettings = first.database.setting.getByFolder("")
-    const shopSettings = first.database.setting.getByFolder("shop")
+    const rootSettings = site.database.setting.getByFolder("")
+    const shopSettings = site.database.setting.getByFolder("shop")
 
     assert.deepEqual(rootSettings.title[0], ["root settings"])
     assert.deepEqual(shopSettings.title[0], ["root settings"]) // still visible via the ancestor chain

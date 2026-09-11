@@ -49,7 +49,8 @@ test("readFile: a returned filePath does not move the target - routing decides w
     }
 
     const site = await bundler(config)
-    const { database: cache } = await site.build({ defer: false })
+    await site.build({ defer: false })
+    const cache = site.database
 
     // read() is handed the routed path and cannot rewrite it. A stray
     // `filePath` in the returned object is inert, not an escape hatch.
@@ -90,7 +91,8 @@ test("readFile: write: false creates a target without writing a file to disk", a
     }
 
     const site = await bundler(config)
-    const { database: cache } = await site.build({ defer: false })
+    await site.build({ defer: false })
+    const cache = site.database
 
     // The target exists and is readable...
     const target = cache.target.get("partial.html")
@@ -135,7 +137,7 @@ test("readFile: write can flip an existing target between virtual and written ac
     const site = await bundler(config)
     const first = await site.build({ defer: false })
 
-    assert.equal(first.database.target.get("toggle.html").write, false)
+    assert.equal(site.database.target.get("toggle.html").write, false)
     assert.equal(await exists(path.join(config.targetFolder, "toggle.html")), false)
 
     // Flip it, then touch the source file so it's re-read.
@@ -144,7 +146,7 @@ test("readFile: write can flip an existing target between virtual and written ac
 
     const second = await site.build({ defer: false })
 
-    assert.equal(second.database.target.get("toggle.html").write, true)
+    assert.equal(site.database.target.get("toggle.html").write, true)
     assert.equal(await exists(path.join(config.targetFolder, "toggle.html")), true)
   })
 })
@@ -173,14 +175,10 @@ test("readFile (buffer format): a returned filePath does not move the target eit
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
+    await (await site.build()).deferred
 
-    await first.runBuffers()
-
-    const final = await site.build({ defer: false })
-
-    assert.ok(final.database.target.get("asset.html"))
-    assert.equal(final.database.target.get("buffers/renamed.html"), undefined)
+    assert.ok(site.database.target.get("asset.html"))
+    assert.equal(site.database.target.get("buffers/renamed.html"), undefined)
     assert.equal(await exists(path.join(config.targetFolder, "asset.html")), true)
     assert.equal(await exists(path.join(config.targetFolder, "buffers/renamed.html")), false)
   })
@@ -215,9 +213,9 @@ test("readFile: an api.url.create() call attributes to the routed target path", 
     const site = await bundler(config)
     const first = await site.build({ defer: false })
 
-    assert.ok(first.database.target.get("page.html"))
+    assert.ok(site.database.target.get("page.html"))
 
-    const deps = first.database.dependency.getAllByTarget("https://example.com/thing")
+    const deps = site.database.dependency.getAllByTarget("https://example.com/thing")
     assert.ok(deps.some(d => d.dependent === "page.html"), "expected page.html to depend on the linked URL")
   })
 })

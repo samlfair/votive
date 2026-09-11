@@ -67,13 +67,13 @@ test("bundler: site.build({ defer: false }) coalesces concurrent callers into a 
     assert.equal(readFileCalls, 2)
 
     for (const result of [first, second, third]) {
-      assert.ok(result.database.target.get("a.html"))
-      assert.ok(result.database.target.get("b.html"))
+      assert.ok(site.database.target.get("a.html"))
+      assert.ok(site.database.target.get("b.html"))
     }
   })
 })
 
-test("bundler: a slow deferred runBuffers() doesn't block a concurrent foreground site.build({ defer: false }) call", async () => {
+test("bundler: slow deferred buffer work doesn't block a concurrent foreground site.build({ defer: false }) call", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "video.bin"), "binary content")
 
@@ -111,12 +111,10 @@ test("bundler: a slow deferred runBuffers() doesn't block a concurrent foregroun
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
-
-    // Fire the slow buffer analysis without awaiting it, mirroring how
-    // the file-watcher handler calls runBuffers()/runFetches(): this
-    // must not block a concurrent foreground edit's own site.build({ defer: false }) call.
-    const runBuffersPromise = first.runBuffers()
+    // Not awaiting `deferred`, mirroring how the dev server lets the slow
+    // buffer analysis run in the background: this must not block a
+    // concurrent foreground edit's own site.build({ defer: false }) call.
+    const { deferred } = await site.build()
 
     await wait(20)
     assert.equal(slowReadStarted, true)
@@ -131,8 +129,8 @@ test("bundler: a slow deferred runBuffers() doesn't block a concurrent foregroun
 
     assert.equal(slowReadFinished, false, "the foreground rebuild should finish well before the slow buffer analysis does")
     assert.ok(elapsed < 80, `foreground site.build({ defer: false }) call took ${elapsed}ms - it should not have waited on the slow buffer analysis`)
-    assert.ok(result.database.target.get("page.html"))
+    assert.ok(site.database.target.get("page.html"))
 
-    await runBuffersPromise
+    await deferred
   })
 })

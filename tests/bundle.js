@@ -85,18 +85,21 @@ test("bundle: buffer processing and URL fetches a plugin claims are both deferre
       }
 
       const site = await bundler(config)
-      const first = await site.build({ defer: false })
+      await site.build({ defer: false })
 
-      // Neither the buffer nor the URL a plugin claims should have run yet.
+      // Neither the buffer nor the URL a plugin claims runs in the
+      // foreground pass.
       assert.equal(bufferReadCalls, 0)
       assert.equal(fetchServerHits, 0)
-      assert.equal(typeof first.runBuffers, "function")
-      assert.equal(typeof first.runFetches, "function")
 
-      await first.runBuffers()
+      // A build with the default runs them, and `deferred` resolves once
+      // they and their follow-up build are done. The sources have to be
+      // read again for that: defer: false doesn't park the work, it skips
+      // it, and a pass with no stale source has nothing to defer.
+      await writeFile(path.join(sourceFolder, "photo.bin"), "binary content, changed")
+      await writeFile(path.join(sourceFolder, "page.md"), `${baseUrl}/asset?changed`)
+      await (await site.build()).deferred
       assert.equal(bufferReadCalls, 1)
-
-      await first.runFetches()
       assert.equal(fetchServerHits, 1)
     })
   } finally {
@@ -104,7 +107,7 @@ test("bundle: buffer processing and URL fetches a plugin claims are both deferre
   }
 })
 
-test("bundle: runFetches auto-triggers a rebuild that picks up the newly-staled target", async () => {
+test("bundle: a deferred fetch auto-triggers a rebuild that picks up the newly-staled target", async () => {
   const { baseUrl, close } = await withServer((req, res) => {
     res.writeHead(200, { "content-type": "text/plain" })
     res.end("fetched-data")
@@ -140,17 +143,20 @@ test("bundle: runFetches auto-triggers a rebuild that picks up the newly-staled 
       }
 
       const site = await bundler(config)
-      const first = await site.build({ defer: false })
+      // Default build: the fetch is already running in the background.
+      // The assertions before `await first.deferred` need real I/O to
+      // become false, so they see the foreground pass's result.
+      const first = await site.build()
 
       // The first build already wrote page.html once, without the URL's
       // data (the fetch was deferred).
       assert.equal(writeFileCalls, 1)
-      assert.equal(first.database.target.get("page.html").metadata.fetched, undefined)
+      assert.equal(site.database.target.get("page.html").metadata.fetched, undefined)
 
       // Running the deferred fetch should mark page.html stale again (see
       // queries.url.create) and, via the auto-chained rebuild, write it a
       // second time - this time it should have nothing further to fetch.
-      await first.runFetches()
+      await first.deferred
 
       assert.equal(writeFileCalls, 2)
     })
@@ -159,7 +165,7 @@ test("bundle: runFetches auto-triggers a rebuild that picks up the newly-staled 
   }
 })
 
-test("bundle: runBuffers auto-triggers a rebuild that writes the newly-created buffer target", async () => {
+test("bundle: deferred buffer work auto-triggers a rebuild that writes the newly-created buffer target", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "photo.bin"), "binary content")
 
@@ -182,23 +188,23 @@ test("bundle: runBuffers auto-triggers a rebuild that writes the newly-created b
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
+    const first = await site.build()
 
-    // Nothing to write yet - the buffer target doesn't exist until
-    // runBuffers() actually creates it.
+    // Nothing to write yet - the buffer target doesn't exist until the
+    // deferred buffer work actually creates it.
     assert.equal(writeFileCalls, 0)
-    assert.equal(first.database.target.get("photo.html"), undefined)
+    assert.equal(site.database.target.get("photo.html"), undefined)
 
-    await first.runBuffers()
+    await first.deferred
 
     // target.create's new-target branch leaves it stale=1; the
     // auto-chained rebuild should have picked that up and written it.
     assert.equal(writeFileCalls, 1)
-    assert.deepEqual(first.database.target.get("photo.html").metadata, { kind: "photo" })
+    assert.deepEqual(site.database.target.get("photo.html").metadata, { kind: "photo" })
   })
 })
 
-test("bundle: a target created via runBuffers() actually reaches the on-disk .votive.db", async () => {
+test("bundle: a target created by deferred buffer work actually reaches the on-disk .votive.db", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "photo.bin"), "binary content")
 
@@ -222,9 +228,7 @@ test("bundle: a target created via runBuffers() actually reaches the on-disk .vo
     // creates a fresh in-memory database and only backs it up to
     // <sourceFolder>/.votive.db once something worth saving happens.
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
-
-    await first.runBuffers()
+    await (await site.build()).deferred
 
     // Simulate a separate process reading .votive.db directly (or the
     // next `votive` invocation, which starts from the file on disk, not
@@ -264,8 +268,7 @@ test("bundle: config.databasePath overrides where .votive.db is written", async 
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
-    await first.runBuffers()
+    await (await site.build()).deferred
 
     const { DatabaseSync } = await import("node:sqlite")
     const reopened = new DatabaseSync(path.join(customDbDir, "custom.db"), { readOnly: true })
@@ -307,7 +310,8 @@ test("bundle: a plugin with no processors at all doesn't crash the build", async
     }
 
     const site = await bundler(config)
-    const { database: cache } = await site.build({ defer: false })
+    await site.build({ defer: false })
+    const cache = site.database
 
     assert.ok(cache.target.get("page.html"))
   })
@@ -344,10 +348,9 @@ test("bundle: an existing on-disk database is opened in WAL mode and each build 
     // and the desktop app always take, and the one the pragmas are for.
     await writeFile(path.join(sourceFolder, "a.md"), "second")
     const second = await bundler(config)
-    const result = await second.build({ defer: false })
+    await second.build({ defer: false })
 
-    // `cache` is the database; entry-point-api.md renames it to `database`.
-    assert.equal(typeof result.database, "object")
+    assert.equal(typeof second.database, "object")
 
     const { DatabaseSync } = await import("node:sqlite")
     const reopened = new DatabaseSync(databasePath, { readOnly: true })
@@ -502,8 +505,7 @@ test("hooks: a readFolder returning urls but no targets still has its urls fetch
       }
 
       const site = await bundler(config)
-      const result = await site.build({ defer: false })
-      if (result.runFetches) await result.runFetches()
+      await (await site.build()).deferred
 
       assert.deepEqual(fetched, ["/from-folder"])
     } finally {
@@ -536,7 +538,7 @@ test("hooks: a writeFile returning nothing leaves the target alone instead of de
     const site = await bundler(config)
     const result = await site.build({ defer: false })
 
-    assert.ok(result.database.target.get("a.html"), "the target row should survive a writeFile that returns nothing")
+    assert.ok(site.database.target.get("a.html"), "the target row should survive a writeFile that returns nothing")
   })
 })
 
@@ -564,14 +566,14 @@ test("hooks: a writeFile returning { delete: true } removes the target and its f
 
     const site = await bundler(config)
     const first = await site.build({ defer: false })
-    assert.ok(first.database.target.get("a.html"))
+    assert.ok(site.database.target.get("a.html"))
 
     // Force another write pass over the same target, this time deleting.
     remove = true
-    first.database.target.markStale("a.html")
+    site.database.target.markStale("a.html")
     const second = await site.build({ defer: false })
 
-    assert.equal(second.database.target.get("a.html"), undefined)
+    assert.equal(site.database.target.get("a.html"), undefined)
   })
 })
 
@@ -603,7 +605,7 @@ test("hooks: a target whose output is an empty string is written and marked fres
     assert.equal(written, "")
 
     // ...and marked fresh, so it isn't rebuilt forever.
-    assert.deepEqual(result.database.target.getStale().map(t => t.path), [])
+    assert.deepEqual(site.database.target.getStale().map(t => t.path), [])
   })
 })
 
@@ -789,7 +791,7 @@ test("entry point: build() runs deferred work by default and resolves result.def
     await result.deferred
 
     assert.equal(bufferRan, true)
-    assert.ok(result.database.target.get("photo.html"))
+    assert.ok(site.database.target.get("photo.html"))
   })
 })
 
@@ -960,12 +962,12 @@ test("incremental: build({deleted}) removes the target the deleted source produc
 
     const site = await bundler(config)
     const first = await site.build({ defer: false })
-    assert.ok(first.database.target.get("b.html"))
+    assert.ok(site.database.target.get("b.html"))
 
     await rm(path.join(sourceFolder, "b.md"))
     const second = await site.build({ defer: false, changed: [], deleted: ["b.md"] })
 
-    assert.equal(second.database.target.get("b.html"), undefined)
+    assert.equal(site.database.target.get("b.html"), undefined)
     // The file too, not just the row: source.delete() only touches the
     // database, and a deleted page used to leave its .html behind.
     await assert.rejects(stat(path.join(sourceFolder, "_out", "b.html")), { code: "ENOENT" })
@@ -1004,7 +1006,7 @@ test("full scan: a source that disappeared between builds has its target file re
     await writeFile(path.join(sourceFolder, "c.md"), "two")
     const second = await site.build({ defer: false })
 
-    assert.equal(second.database.target.get("b.html"), undefined)
+    assert.equal(site.database.target.get("b.html"), undefined)
     await assert.rejects(stat(path.join(sourceFolder, "_out", "b.html")), { code: "ENOENT" })
     assert.ok(await stat(path.join(sourceFolder, "_out", "c.html")))
   })

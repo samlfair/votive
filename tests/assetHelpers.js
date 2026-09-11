@@ -36,10 +36,9 @@ test("target.create records the source file path on a newly-created target", asy
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
-    await first.runBuffers()
+    await (await site.build()).deferred
 
-    const target = first.database.target.get("doc.pdf")
+    const target = site.database.target.get("doc.pdf")
     assert.equal(target.source, "doc.pdf")
   })
 })
@@ -70,8 +69,7 @@ test("writeFile's target.buffer() reads the source file's raw bytes", async () =
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
-    await first.runBuffers()
+    await (await site.build()).deferred
 
     assert.equal(writtenBuffer.toString(), "raw-pdf-bytes")
 
@@ -108,8 +106,7 @@ test("writeFile's target.stream() opens a readable stream over the source file",
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
-    await first.runBuffers()
+    await (await site.build()).deferred
 
     assert.equal(Buffer.concat(streamedChunks).toString(), "raw-video-bytes")
   })
