@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import createDatabase from "../lib/createDatabase.js"
 import cleanupDatabase from "../lib/cleanupDatabase.js"
+import { checkFile } from "../lib/utils/index.js"
 
 /** @param {(sourceFolder: string, targetFolder: string) => Promise<void>} run */
 async function withFolders(run) {
@@ -23,7 +24,7 @@ async function withFolders(run) {
 test("cleanupDatabase: prunes a target whose file and source are both gone", async () => {
   await withFolders(async (sourceFolder, targetFolder) => {
     const database = createDatabase(":memory:")
-    database.target.create({ path: "gone.html", metadata: {}, source: path.join(sourceFolder, "gone.md") })
+    database.target.create({ path: "gone.html", metadata: {}, source: "gone.md" })
     // Neither gone.html nor gone.md exist on disk.
 
     const summary = cleanupDatabase({ sourceFolder, targetFolder, verbose: false }, database)
@@ -40,7 +41,11 @@ test("cleanupDatabase: heals (marks stale) a target whose source still exists bu
     await writeFile(sourcePath, "content")
 
     const database = createDatabase(":memory:")
-    database.target.create({ path: "still-here.html", metadata: {}, source: sourcePath })
+    // Relative, as the database stores it (see CLAUDE.md: everything
+    // in the database is relative to sourceFolder). This test used to
+    // store the absolute path, which is how a cwd-relative check in the
+    // sweep stayed green while pruning every target in production.
+    database.target.create({ path: "still-here.html", metadata: {}, source: "still-here.md" })
     database.target.markFresh("still-here.html")
     // still-here.html was never actually written to targetFolder.
 
@@ -142,5 +147,86 @@ test("cleanupDatabase: doesn't crash on the route()-less \"0\" placeholder targe
     assert.equal(row.t, "text")
 
     assert.doesNotThrow(() => cleanupDatabase({ sourceFolder, targetFolder, verbose: false }, database))
+  })
+})
+
+test("cleanupDatabase: resolves a target's source against sourceFolder, not cwd", async () => {
+  await withFolders(async (sourceFolder, targetFolder) => {
+    await writeFile(path.join(sourceFolder, "page.md"), "content")
+
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "page.html", metadata: {}, source: "page.md" })
+    database.target.markFresh("page.html")
+    // page.html was never written. page.md exists - but only under
+    // sourceFolder, never under process.cwd(). A cwd-relative check
+    // would call the source gone and delete the row instead of healing.
+
+    const summary = cleanupDatabase({ sourceFolder, targetFolder, verbose: false }, database)
+
+    assert.deepEqual(summary.prunedTargets, [])
+    assert.deepEqual(summary.healedTargets, ["page.html"])
+    assert.notEqual(database.target.get("page.html"), undefined)
+  })
+})
+
+test("cleanupDatabase: deletes a file in the target folder that no target row claims", async () => {
+  await withFolders(async (sourceFolder, targetFolder) => {
+    await mkdir(path.join(targetFolder, "old"), { recursive: true })
+    await writeFile(path.join(targetFolder, "kept.html"), "kept")
+    await writeFile(path.join(targetFolder, "old", "stranded.html"), "left behind by a rename")
+    await writeFile(path.join(targetFolder, "recursive.ttf"), "a font nothing links any more")
+
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "kept.html", metadata: {} })
+    database.target.markFresh("kept.html")
+
+    const summary = cleanupDatabase({ sourceFolder, targetFolder, verbose: false }, database)
+
+    assert.deepEqual(summary.prunedFiles.sort(), ["old/stranded.html", "recursive.ttf"])
+    assert.equal(checkFile(path.join(targetFolder, "kept.html")) !== null, true)
+    assert.equal(checkFile(path.join(targetFolder, "old", "stranded.html")), null)
+    assert.equal(checkFile(path.join(targetFolder, "recursive.ttf")), null)
+  })
+})
+
+test("cleanupDatabase: a virtual target's path is not expected on disk, and a stray file there is deleted", async () => {
+  await withFolders(async (sourceFolder, targetFolder) => {
+    await writeFile(path.join(targetFolder, "secret.html"), "should never have been written")
+
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "secret.html", metadata: {}, write: false })
+    database.target.markFresh("secret.html")
+
+    const summary = cleanupDatabase({ sourceFolder, targetFolder, verbose: false }, database)
+
+    assert.deepEqual(summary.prunedFiles, ["secret.html"])
+    assert.notEqual(database.target.get("secret.html"), undefined) // the row is untouched
+  })
+})
+
+test("cleanupDatabase: leaves the database and cache alone when they live inside the target folder", async () => {
+  await withFolders(async (sourceFolder, targetFolder) => {
+    const databasePath = path.join(targetFolder, ".votive.db")
+    const cacheDirectory = path.join(targetFolder, ".cache")
+    await mkdir(cacheDirectory, { recursive: true })
+    await writeFile(databasePath, "db")
+    await writeFile(databasePath + "-wal", "wal")
+    await writeFile(path.join(cacheDirectory, "abc.json"), "{}")
+
+    const database = createDatabase(":memory:")
+    const summary = cleanupDatabase({ sourceFolder, targetFolder, databasePath, cacheDirectory, verbose: false }, database)
+
+    assert.deepEqual(summary.prunedFiles, [])
+    assert.notEqual(checkFile(databasePath), null)
+    assert.notEqual(checkFile(databasePath + "-wal"), null)
+    assert.notEqual(checkFile(path.join(cacheDirectory, "abc.json")), null)
+  })
+})
+
+test("cleanupDatabase: a missing target folder is not an error", async () => {
+  await withFolders(async (sourceFolder, targetFolder) => {
+    const database = createDatabase(":memory:")
+    const summary = cleanupDatabase({ sourceFolder, targetFolder: path.join(targetFolder, "never-created"), verbose: false }, database)
+    assert.deepEqual(summary.prunedFiles, [])
   })
 })

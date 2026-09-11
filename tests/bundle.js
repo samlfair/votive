@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import http from "node:http"
-import { mkdtemp, writeFile, rm, readFile, mkdir } from "node:fs/promises"
+import { mkdtemp, writeFile, rm, readFile, mkdir, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import bundler from "../lib/bundle.js"
@@ -966,6 +966,47 @@ test("incremental: build({deleted}) removes the target the deleted source produc
     const second = await site.build({ defer: false, changed: [], deleted: ["b.md"] })
 
     assert.equal(second.database.target.get("b.html"), undefined)
+    // The file too, not just the row: source.delete() only touches the
+    // database, and a deleted page used to leave its .html behind.
+    await assert.rejects(stat(path.join(sourceFolder, "_out", "b.html")), { code: "ENOENT" })
+    assert.ok(await stat(path.join(sourceFolder, "_out", "a.html")))
+  })
+})
+
+test("full scan: a source that disappeared between builds has its target file removed", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "a.md"), "one")
+    await writeFile(path.join(sourceFolder, "b.md"), "two")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => ({ data: source.text, metadata: {} }),
+          writeFile: (target) => ({ data: target.data ?? "" })
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    await site.build({ defer: false })
+    assert.ok(await stat(path.join(sourceFolder, "_out", "b.html")))
+
+    // A rename is a delete plus an add, and the watcher isn't involved
+    // here: this is the un-scoped full pass discovering the deletion.
+    await rm(path.join(sourceFolder, "b.md"))
+    await writeFile(path.join(sourceFolder, "c.md"), "two")
+    const second = await site.build({ defer: false })
+
+    assert.equal(second.database.target.get("b.html"), undefined)
+    await assert.rejects(stat(path.join(sourceFolder, "_out", "b.html")), { code: "ENOENT" })
+    assert.ok(await stat(path.join(sourceFolder, "_out", "c.html")))
   })
 })
 
