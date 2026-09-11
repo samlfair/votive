@@ -343,3 +343,117 @@ test("settings, now backed by accumulating folder-scoped metadata rows", async (
     assert.equal(isStale(database, "blog/index.html"), true)
   })
 })
+
+test("settings resolvers: last(), flat(), raw()", async (t) => {
+  await t.test("last(): the nearest folder's value, leaf-upward, skipping empty levels", () => {
+    const database = createDatabase(":memory:")
+    database.setting.accumulate("", { theme: "root" }, "settings.md")
+    database.setting.accumulate("blog", { theme: "blog" }, "blog/settings.md")
+
+    assert.equal(database.setting.getByFolder("blog/travel").last("theme"), "blog") // travel unset -> blog
+    assert.equal(database.setting.getByFolder("blog").last("theme"), "blog")
+    assert.equal(database.setting.getByFolder("other").last("theme"), "root")
+    assert.equal(database.setting.getByFolder("").last("theme"), "root")
+  })
+
+  await t.test("flat(): every value at every level, root first", () => {
+    const database = createDatabase(":memory:")
+    database.setting.accumulate("", { stylesheets: ["reset.css", "default.css"] }, "settings.md")
+    database.setting.accumulate("blog", { stylesheets: "blog.css" }, "blog/styles.css")
+
+    assert.deepEqual(database.setting.getByFolder("blog/travel").flat("stylesheets"), ["reset.css", "default.css", "blog.css"])
+    assert.deepEqual(database.setting.getByFolder("other").flat("stylesheets"), ["reset.css", "default.css"])
+  })
+
+  await t.test("raw(): the ancestor array exactly as the property gives it", () => {
+    const database = createDatabase(":memory:")
+    database.setting.accumulate("", { breadcrumb: "Home" }, "settings.md")
+    database.setting.accumulate("blog", { breadcrumb: "Blog" }, "blog/settings.md")
+
+    const settings = database.setting.getByFolder("blog/travel")
+    assert.deepEqual(settings.raw("breadcrumb"), [["Home"], ["Blog"], []])
+    assert.deepEqual(settings.raw("breadcrumb"), settings.breadcrumb)
+  })
+
+  await t.test("an unset label resolves to undefined / [] / undefined rather than throwing", () => {
+    const database = createDatabase(":memory:")
+    database.setting.accumulate("", { theme: "root" }, "settings.md")
+
+    const settings = database.setting.getByFolder("blog")
+    assert.equal(settings.last("neverSet"), undefined)
+    assert.deepEqual(settings.flat("neverSet"), [])
+    assert.equal(settings.raw("neverSet"), undefined)
+  })
+
+  await t.test("the resolvers are not labels: Object.keys, for-in and JSON.stringify show only labels", () => {
+    const database = createDatabase(":memory:")
+    database.setting.accumulate("", { theme: "root" }, "settings.md")
+
+    const settings = database.setting.getByFolder("")
+    assert.deepEqual(Object.keys(settings), ["theme"])
+    const seen = []
+    for (const label in settings) seen.push(label)
+    assert.deepEqual(seen, ["theme"])
+    assert.equal(JSON.stringify(settings), JSON.stringify({ theme: [["root"]] }))
+  })
+
+  await t.test("a label named after a resolver fails loudly rather than shadowing it", () => {
+    const database = createDatabase(":memory:")
+    database.setting.accumulate("", { last: "x" }, "settings.md")
+    assert.throws(() => database.setting.getByFolder(""), /cannot be labelled "last"/)
+  })
+
+  await t.test("last() tracks the deciding level: a change there stales the dependent", () => {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "page.html", metadata: {} })
+    database.setting.accumulate("", { theme: "root" }, "settings.md")
+    database.setting.accumulate("blog", { theme: "blog" }, "blog/settings.md")
+    database.target.markFresh("page.html")
+
+    database.setting.getByFolder("blog/travel", "page.html").last("theme") // decided at "blog"
+
+    database.setting.accumulate("blog", { theme: "blog-2" }, "blog/settings.md")
+    assert.equal(isStale(database, "page.html"), true)
+  })
+
+  await t.test("last() does not track a level above the deciding one: a change there leaves the dependent fresh", () => {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "page.html", metadata: {} })
+    database.setting.accumulate("", { theme: "root" }, "settings.md")
+    database.setting.accumulate("blog", { theme: "blog" }, "blog/settings.md")
+    database.target.markFresh("page.html")
+
+    database.setting.getByFolder("blog/travel", "page.html").last("theme") // decided at "blog"; root never read
+
+    database.setting.accumulate("", { theme: "root-2" }, "settings.md")
+    assert.equal(isStale(database, "page.html"), false)
+  })
+
+  await t.test("last() tracks the empty levels below the deciding one: a value appearing there stales the dependent", () => {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "page.html", metadata: {} })
+    database.setting.accumulate("", { theme: "root" }, "settings.md")
+    database.target.markFresh("page.html")
+
+    database.setting.getByFolder("blog/travel", "page.html").last("theme") // read travel (empty), blog (empty), root
+
+    // The label is already known in the chain, so this is not a
+    // first-appearance subtree stale - it has to come from the tracked
+    // read of the empty "blog" slot.
+    database.setting.accumulate("blog", { theme: "blog" }, "blog/settings.md")
+    assert.equal(isStale(database, "page.html"), true)
+  })
+
+  await t.test("flat() tracks every level", () => {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "page.html", metadata: {} })
+    database.setting.accumulate("", { stylesheets: "root.css" }, "settings.md")
+    database.setting.accumulate("blog", { stylesheets: "blog.css" }, "blog/styles.css")
+    database.target.markFresh("page.html")
+
+    database.setting.getByFolder("blog/travel", "page.html").flat("stylesheets")
+
+    database.setting.accumulate("", { stylesheets: "root-2.css" }, "settings.md")
+    assert.equal(isStale(database, "page.html"), true)
+  })
+})
