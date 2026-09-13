@@ -47,7 +47,7 @@ test("plugin callbacks receive a restricted api instead of the full database", a
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
+    const first = await (await site.build()).deferred
 
     // Only the curated methods are exposed - not the full database surface.
     assert.deepEqual(Object.keys(seenAPI).sort(), ["createTarget", "target", "targetBySource", "targets", "url"])
@@ -88,7 +88,7 @@ test("api.createTarget() from readFile() persists a new target", async () => {
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
+    const first = await (await site.build()).deferred
 
     assert.ok(site.database.target.get("generated.html"))
     assert.equal(site.database.target.get("generated.html").metadata.generated, "yes")

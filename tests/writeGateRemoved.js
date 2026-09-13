@@ -42,7 +42,7 @@ test("writeTargets: a target with an empty abstract is still written - the plugi
     }
 
     const site = await bundler(config)
-    await site.build({ defer: false })
+    await (await site.build()).deferred
 
     const triggerContent = await readFile(path.join(config.targetFolder, "trigger.html"), "utf-8")
     const alwaysContent = await readFile(path.join(config.targetFolder, "always-written.html"), "utf-8")

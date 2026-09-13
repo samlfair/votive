@@ -209,3 +209,38 @@ test("cleanupDatabase: a missing target folder is not an error", async () => {
     assert.deepEqual(summary.prunedFiles, [])
   })
 })
+
+test("cleanupDatabase: heals a stub target whose file is missing instead of pruning it", async () => {
+  // A stub's source is enumerated, never on disk, so the plain "does the
+  // source file exist" test reports every stub target as source-gone and
+  // deletes it - 404.html, robots.txt, every stylesheet, every tag page,
+  // on the first startup sweep. The check is "is a *file* source and the
+  // file is missing". See tasks/2-in-progress/synthetic-sources.md.
+  await withFolders(async (sourceFolder, targetFolder) => {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "404.html", metadata: {}, source: "404.md" })
+    // Recorded as a stub: params in the `stub` column, no file anywhere.
+    database.source.create("404.md", "404.html", 0, "null")
+
+    const summary = cleanupDatabase({ sourceFolder, targetFolder, verbose: false }, database)
+
+    assert.deepEqual(summary.prunedTargets, [], "a stub target must not be pruned")
+    assert.deepEqual(summary.healedTargets, ["404.html"])
+    assert.notEqual(database.target.get("404.html"), undefined)
+  })
+})
+
+test("cleanupDatabase: still prunes a file-source target whose source is gone, alongside stubs", async () => {
+  await withFolders(async (sourceFolder, targetFolder) => {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "404.html", metadata: {}, source: "404.md" })
+    database.source.create("404.md", "404.html", 0, "null")
+    database.target.create({ path: "gone.html", metadata: {}, source: "gone.md" })
+    database.source.create("gone.md", "gone.html", 123)
+
+    const summary = cleanupDatabase({ sourceFolder, targetFolder, verbose: false }, database)
+
+    assert.deepEqual(summary.prunedTargets, ["gone.html"])
+    assert.deepEqual(summary.healedTargets, ["404.html"])
+  })
+})

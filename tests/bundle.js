@@ -33,7 +33,7 @@ test("bundle: throws when sourceFolder is relative instead of silently resolving
     }
 
     const site = await bundler(config)
-    await assert.rejects(() => site.build({ defer: false }), /sourceFolder must be an absolute/)
+    await assert.rejects(() => site.build(), /sourceFolder must be an absolute/)
   })
 })
 
@@ -83,24 +83,27 @@ test("bundle: buffer processing and URL fetches a plugin claims are both deferre
       }
 
       const site = await bundler(config)
-      await site.build({ defer: false })
 
-      // Neither the buffer nor the URL a plugin claims runs in the
-      // foreground pass.
-      assert.equal(bufferReadCalls, 0)
-      assert.equal(fetchServerHits, 0)
+      // Event order is how "deferred" is asserted now that there is no
+      // way to ask for a build that skips it: the foreground pass emits
+      // "built" before either runner has finished, and each runner emits
+      // "deferred" when it does. Checking a call counter between
+      // build() returning and `deferred` resolving would be a race -
+      // the runners start as build() returns.
+      const events = []
+      site.on("built", () => events.push("built"))
+      site.on("deferred", kind => events.push(`deferred:${kind}`))
 
-      // A build with the default runs them, and `deferred` resolves once
-      // they and their follow-up build are done. The buffer has to be
-      // read again for that: defer: false doesn't park buffer work, it
-      // skips it, and a pass with no stale source has nothing to defer.
-      // A url is different - the request stays queued until the next
-      // pass that runs deferred work - so page.md is left alone and the
-      // one fetch below is the one queued above.
-      await writeFile(path.join(sourceFolder, "photo.bin"), "binary content, changed")
       await (await site.build()).deferred
+
       assert.equal(bufferReadCalls, 1)
       assert.equal(fetchServerHits, 1)
+
+      assert.equal(events[0], "built", "the foreground pass completes first")
+      assert.deepEqual(
+        events.filter(e => e.startsWith("deferred:")).sort(),
+        ["deferred:buffers", "deferred:fetches"]
+      )
     })
   } finally {
     await close()
@@ -307,7 +310,7 @@ test("bundle: a plugin with no processors at all doesn't crash the build", async
     }
 
     const site = await bundler(config)
-    await site.build({ defer: false })
+    await (await site.build()).deferred
     const cache = site.database
 
     assert.ok(cache.target.get("page.html"))
@@ -339,13 +342,13 @@ test("bundle: an existing on-disk database is opened in WAL mode and each build 
     // First run: no database on disk, so this builds in memory and
     // saveDB() writes .votive.db at the end.
     const first = await bundler(config)
-    await first.build({ defer: false })
+    await (await first.build()).deferred
 
     // Second bundler() opens that file. This is the path the dev server
     // and the desktop app always take, and the one the pragmas are for.
     await writeFile(path.join(sourceFolder, "a.md"), "second")
     const second = await bundler(config)
-    await second.build({ defer: false })
+    await (await second.build()).deferred
 
     assert.equal(typeof second.database, "object")
 
@@ -387,7 +390,7 @@ test("bundle: a writeFile that throws rolls the build back, leaving the database
     }
 
     const first = await bundler(config)
-    await first.build({ defer: false })
+    await (await first.build()).deferred
 
     const { DatabaseSync } = await import("node:sqlite")
     const countRows = () => {
@@ -404,7 +407,7 @@ test("bundle: a writeFile that throws rolls the build back, leaving the database
     explode = true
 
     const second = await bundler(config)
-    await assert.rejects(() => second.build({ defer: false }), /plugin exploded/)
+    await assert.rejects(() => second.build(), /plugin exploded/)
 
     assert.equal(countRows(), before)
   })
@@ -433,7 +436,7 @@ test("hooks: a readFolder that returns {} doesn't crash the build", async () => 
     }
 
     const site = await bundler(config)
-    await site.build({ defer: false })
+    await (await site.build()).deferred
   })
 })
 
@@ -459,7 +462,7 @@ test("hooks: a readFolder that returns nothing at all doesn't crash the build", 
     }
 
     const site = await bundler(config)
-    await site.build({ defer: false })
+    await (await site.build()).deferred
   })
 })
 
@@ -535,7 +538,7 @@ test("hooks: a writeFile returning nothing leaves the target alone instead of de
     }
 
     const site = await bundler(config)
-    const result = await site.build({ defer: false })
+    const result = await (await site.build()).deferred
 
     assert.ok(site.database.target.get("a.html"), "the target row should survive a writeFile that returns nothing")
   })
@@ -564,13 +567,13 @@ test("hooks: a writeFile returning { delete: true } removes the target and its f
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
+    const first = await (await site.build()).deferred
     assert.ok(site.database.target.get("a.html"))
 
     // Force another write pass over the same target, this time deleting.
     remove = true
     site.database.target.markStale("a.html")
-    const second = await site.build({ defer: false })
+    const second = await (await site.build()).deferred
 
     assert.equal(site.database.target.get("a.html"), undefined)
   })
@@ -597,7 +600,7 @@ test("hooks: a target whose output is an empty string is written and marked fres
     }
 
     const site = await bundler(config)
-    const result = await site.build({ defer: false })
+    const result = await (await site.build()).deferred
 
     // Written despite being empty...
     const written = await readFile(path.join(sourceFolder, "_out", "a.html"), "utf-8")
@@ -639,7 +642,7 @@ test("hooks: every hook's context is exactly { api, settings, config }, and read
     }
 
     const site = await bundler(config)
-    await site.build({ defer: false })
+    await (await site.build()).deferred
 
     for (const hook of ["readFile", "transformFile", "readFolder", "writeFile"]) {
       assert.deepEqual(seen[hook], ["api", "config", "settings"], `${hook} context keys`)
@@ -721,13 +724,13 @@ test("hooks: a second build after a clean one writes nothing (the data write-bac
     }
 
     const site = await bundler(config)
-    await site.build({ defer: false })
+    await (await site.build()).deferred
     const afterFirst = writes
 
     // writeTargets stores what writeFile produced back onto the target.
     // Routed through target.create() that would mark the target stale
     // again, and every build would rewrite every page forever.
-    await site.build({ defer: false })
+    await (await site.build()).deferred
     assert.equal(writes, afterFirst, "the second build should write nothing")
   })
 })
@@ -816,13 +819,13 @@ test("entry point: close() releases the database file", async () => {
     }
 
     const first = await bundler(config)
-    await first.build({ defer: false })
+    await (await first.build()).deferred
 
     // Reopen on disk, then close: a second DatabaseSync must open without
     // SQLITE_BUSY. This is what lets the desktop app switch projects
     // in-process.
     const second = await bundler(config)
-    await second.build({ defer: false })
+    await (await second.build()).deferred
     await second.close()
 
     const { DatabaseSync } = await import("node:sqlite")
@@ -887,7 +890,7 @@ test("entry point: config.log receives stage messages instead of console.info", 
     }
 
     const site = await bundler(config)
-    await site.build({ defer: false })
+    await (await site.build()).deferred
 
     assert.ok(messages.some(m => m.message === "starting build"), `got ${JSON.stringify(messages)}`)
   })
@@ -916,7 +919,7 @@ test("incremental: build({changed}) stats only the named file", async () => {
     }
 
     const site = await bundler(config)
-    await site.build({ defer: false })
+    await (await site.build()).deferred
 
     const fsPromises = await import("node:fs/promises")
     const realStat = fsPromises.default.stat
@@ -925,7 +928,7 @@ test("incremental: build({changed}) stats only the named file", async () => {
 
     try {
       await writeFile(path.join(sourceFolder, "a.md"), "one edited")
-      await site.build({ defer: false, changed: ["a.md"] })
+      await (await site.build({ changed: ["a.md"] })).deferred
     } finally {
       fsPromises.default.stat = realStat
     }
@@ -959,11 +962,11 @@ test("incremental: build({deleted}) removes the target the deleted source produc
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
+    const first = await (await site.build()).deferred
     assert.ok(site.database.target.get("b.html"))
 
     await rm(path.join(sourceFolder, "b.md"))
-    const second = await site.build({ defer: false, changed: [], deleted: ["b.md"] })
+    const second = await (await site.build({ changed: [], deleted: ["b.md"] })).deferred
 
     assert.equal(site.database.target.get("b.html"), undefined)
     // The file too, not just the row: source.delete() only touches the
@@ -995,14 +998,14 @@ test("full scan: a source that disappeared between builds has its target file re
     }
 
     const site = await bundler(config)
-    await site.build({ defer: false })
+    await (await site.build()).deferred
     assert.ok(await stat(path.join(sourceFolder, "_out", "b.html")))
 
     // A rename is a delete plus an add, and the watcher isn't involved
     // here: this is the un-scoped full pass discovering the deletion.
     await rm(path.join(sourceFolder, "b.md"))
     await writeFile(path.join(sourceFolder, "c.md"), "two")
-    const second = await site.build({ defer: false })
+    const second = await (await site.build()).deferred
 
     assert.equal(site.database.target.get("b.html"), undefined)
     await assert.rejects(stat(path.join(sourceFolder, "_out", "b.html")), { code: "ENOENT" })
@@ -1033,7 +1036,7 @@ test("incremental: two build({changed}) calls during a build coalesce into one p
     }
 
     const site = await bundler(config)
-    await site.build({ defer: false })
+    await (await site.build()).deferred
 
     await writeFile(path.join(sourceFolder, "a.md"), "one edited")
     await writeFile(path.join(sourceFolder, "b.md"), "two edited")
@@ -1043,8 +1046,8 @@ test("incremental: two build({changed}) calls during a build coalesce into one p
     // so its path must be merged into the trailing pass rather than
     // dropped.
     await Promise.all([
-      site.build({ defer: false, changed: ["a.md"] }),
-      site.build({ defer: false, changed: ["b.md"] })
+      site.build({ changed: ["a.md"] }),
+      site.build({ changed: ["b.md"] })
     ])
 
     assert.ok(seen.includes("a.md"), `a.md should be read, got ${seen.join(", ")}`)
@@ -1077,7 +1080,7 @@ test("a source whose router returns false has no target: no row, no placeholder,
     }
 
     const site = await bundler(config)
-    await site.build({ defer: false })
+    await (await site.build()).deferred
 
     const paths = site.database.target.getAll().map(target => target.path)
     assert.deepEqual(paths, ["a.html"])
@@ -1089,7 +1092,7 @@ test("a source whose router returns false has no target: no row, no placeholder,
 
     // And deleting it removes them without touching any target.
     await rm(path.join(sourceFolder, "settings.md"))
-    await site.build({ defer: false, changed: [], deleted: ["settings.md"] })
+    await (await site.build({ changed: [], deleted: ["settings.md"] })).deferred
     assert.equal(site.database.setting.getByFolder("").site, undefined)
     assert.ok(site.database.target.get("a.html"))
   })

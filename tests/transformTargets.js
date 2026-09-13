@@ -37,7 +37,7 @@ test("transformTargets: a transformFile processor's result persists to the targe
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
+    const first = await (await site.build()).deferred
 
     assert.deepEqual(site.database.target.get("page.html").metadata, {
       tag: "p",
@@ -75,7 +75,7 @@ test("transformTargets: multiple transformer processors chain, each seeing the p
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
+    const first = await (await site.build()).deferred
 
     assert.deepEqual(site.database.target.get("page.html").metadata.steps, ["first", "second"])
   })
@@ -106,7 +106,7 @@ test("transformTargets: a transformFile hook can still queue urls alongside tran
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
+    const first = await (await site.build()).deferred
 
     assert.deepEqual(site.database.target.get("page.html").metadata, { scanned: "yes" })
   })

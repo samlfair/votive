@@ -176,3 +176,134 @@ test("dependencies: folder/folder_recursive typing and invalidation", async (t) 
     assert.equal(isStale(database, "home.html"), false)
   })
 })
+
+test("dependencies: a filtered listing tracks the labels it filters on", async (t) => {
+  // A listing's filter is evaluated in SQL, so the labels it names are
+  // never read in JS and nothing registered an edge for them. A page that
+  // stopped matching was returned last time (so its other properties are
+  // tracked) but its `tags` never was; a page that started matching was
+  // not returned at all. See
+  // tasks/2-in-progress/filtered-listings-dont-track-their-filter.md.
+
+  /** Two tagged posts and a tag page that lists them. */
+  function seed() {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "blog/a.html", metadata: { tags: ["foo"], title: "A" } })
+    database.target.create({ path: "blog/b.html", metadata: { tags: ["foo"], title: "B" } })
+    database.target.create({ path: "tags/foo.html", metadata: {} })
+    return database
+  }
+
+  /** The tag page's listing, as vowel makes it. */
+  function listTagged(database, tag = "foo") {
+    return database.target.getByFolder({
+      folder: "",
+      recursive: true,
+      dependent: "tags/foo.html",
+      query: { tags: { "~": tag } }
+    })
+  }
+
+  await t.test("the filter's labels are registered as folder edges", () => {
+    const database = seed()
+    listTagged(database)
+
+    const rows = database.dependency.getAllByTarget("")
+    const properties = rows
+      .filter(row => row.dependent === "tags/foo.html")
+      .map(row => row.property)
+      .sort()
+
+    // "" is the pre-existing membership edge; "tags" is the new one.
+    assert.deepEqual(properties, ["", "tags"])
+    assert.equal(rows.every(row => row.type === "folder_recursive"), true)
+  })
+
+  await t.test("a target that loses the filtered tag stales the listing", () => {
+    const database = seed()
+    assert.deepEqual(listTagged(database).map(t => t.path), ["blog/a.html", "blog/b.html"])
+    database.target.markFresh("tags/foo.html")
+    assert.equal(isStale(database, "tags/foo.html"), false)
+
+    // b drops the tag. The row still exists, so no membership edge fires.
+    database.target.create({ path: "blog/b.html", metadata: { tags: [], title: "B" } })
+
+    assert.equal(isStale(database, "tags/foo.html"), true)
+    assert.deepEqual(listTagged(database).map(t => t.path), ["blog/a.html"])
+  })
+
+  await t.test("a target that gains the filtered tag stales the listing", () => {
+    const database = seed()
+    database.target.create({ path: "blog/c.html", metadata: { tags: [], title: "C" } })
+    listTagged(database)
+    database.target.markFresh("tags/foo.html")
+
+    // c was never in the result set, so it holds no per-property edge.
+    database.target.create({ path: "blog/c.html", metadata: { tags: ["foo"], title: "C" } })
+
+    assert.equal(isStale(database, "tags/foo.html"), true)
+  })
+
+  await t.test("deleting the filtered label entirely stales the listing", () => {
+    const database = seed()
+    listTagged(database)
+    database.target.markFresh("tags/foo.html")
+
+    database.target.create({ path: "blog/b.html", metadata: { title: "B" } })
+
+    assert.equal(isStale(database, "tags/foo.html"), true)
+  })
+
+  await t.test("a change to an unrelated label does not stale the listing", () => {
+    const database = seed()
+    listTagged(database)
+    database.target.markFresh("tags/foo.html")
+
+    // `views` is named by no filter and read by nobody.
+    database.target.create({ path: "blog/b.html", metadata: { tags: ["foo"], title: "B", views: 12 } })
+
+    assert.equal(isStale(database, "tags/foo.html"), false)
+  })
+
+  await t.test("labels nested under |, ! and a JSON path are all collected", () => {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "blog/a.html", metadata: { status: "published" } })
+    database.target.create({ path: "nav.html", metadata: {} })
+
+    database.target.getByFolder({
+      folder: "",
+      recursive: true,
+      dependent: "nav.html",
+      query: {
+        "|": { status: "published", featured: true },
+        "!": { draft: true },
+        author: { country: "Canada" }
+      }
+    })
+
+    const properties = database.dependency.getAllByTarget("")
+      .filter(row => row.dependent === "nav.html")
+      .map(row => row.property)
+      .sort()
+
+    assert.deepEqual(properties, ["", "author", "draft", "featured", "status"])
+  })
+
+  await t.test("a non-recursive filtered listing registers 'folder' edges, not recursive ones", () => {
+    const database = seed()
+    database.target.getByFolder({
+      folder: "blog",
+      recursive: false,
+      dependent: "tags/foo.html",
+      query: { tags: { "~": "foo" } }
+    })
+    database.target.markFresh("tags/foo.html")
+
+    // A deeper change must not reach a non-recursive dependent.
+    database.target.create({ path: "blog/sub/deep.html", metadata: { tags: ["foo"] } })
+    assert.equal(isStale(database, "tags/foo.html"), false)
+
+    database.target.create({ path: "blog/a.html", metadata: { tags: [], title: "A" } })
+    assert.equal(isStale(database, "tags/foo.html"), true)
+  })
+})

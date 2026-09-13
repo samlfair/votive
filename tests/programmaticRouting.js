@@ -49,7 +49,7 @@ test("readFile: a returned filePath does not move the target - routing decides w
     }
 
     const site = await bundler(config)
-    await site.build({ defer: false })
+    await (await site.build()).deferred
     const cache = site.database
 
     // read() is handed the routed path and cannot rewrite it. A stray
@@ -91,7 +91,7 @@ test("readFile: write: false creates a target without writing a file to disk", a
     }
 
     const site = await bundler(config)
-    await site.build({ defer: false })
+    await (await site.build()).deferred
     const cache = site.database
 
     // The target exists and is readable...
@@ -135,7 +135,7 @@ test("readFile: write can flip an existing target between virtual and written ac
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
+    const first = await (await site.build()).deferred
 
     assert.equal(site.database.target.get("toggle.html").write, false)
     assert.equal(await exists(path.join(config.targetFolder, "toggle.html")), false)
@@ -144,7 +144,7 @@ test("readFile: write can flip an existing target between virtual and written ac
     virtual = false
     await writeFile(sourcePath, "v2")
 
-    const second = await site.build({ defer: false })
+    const second = await (await site.build()).deferred
 
     assert.equal(site.database.target.get("toggle.html").write, true)
     assert.equal(await exists(path.join(config.targetFolder, "toggle.html")), true)
@@ -212,11 +212,203 @@ test("readFile: an api.url() call attributes to the routed target path", async (
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
+    const first = await (await site.build()).deferred
 
     assert.ok(site.database.target.get("page.html"))
 
     const deps = site.database.dependency.getAllByTarget("https://example.com/thing")
     assert.ok(deps.some(d => d.dependent === "page.html"), "expected page.html to depend on the linked URL")
+  })
+})
+
+/**
+ * A config-level router rewrites a source path before any processor's
+ * router sees it. Vowel uses it for secret paths: a segment beginning
+ * with "-" is replaced by a hash. It has to live above the processors,
+ * because a secret folder contains images and fonts as well as pages, and
+ * nine processors each implementing the rule means whichever one forgets
+ * leaks the folder name. See tasks/2-in-progress/synthetic-sources.md.
+ */
+function hashSecretSegments(sourcePath) {
+  return sourcePath
+    .split("/")
+    // Lowercase, like a real md5 hex digest: canonicalTargetPath
+    // lowercases every stored target path.
+    .map(segment => segment.startsWith("-") ? `h${segment.slice(1)}h` : segment)
+    .join("/")
+}
+
+test("config.router: rewrites the path every processor's router then routes", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    const { mkdir } = await import("node:fs/promises")
+    await mkdir(path.join(sourceFolder, "-key"), { recursive: true })
+    await writeFile(path.join(sourceFolder, "-key", "hello.md"), "page")
+    await writeFile(path.join(sourceFolder, "-key", "photo.png"), "bytes")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      cacheDirectory: path.join(sourceFolder, "_cache"),
+      verbose: false,
+      router: hashSecretSegments,
+      plugins: [{
+        name: "test-plugin",
+        processors: [
+          {
+            extensions: [".md", ".html"],
+            format: "text",
+            router: ({ dir, name }) => ({ dir, name, ext: ".html" }),
+            readFile: (source) => ({ data: source.text, metadata: {} }),
+            writeFile: (target) => ({ data: target.data })
+          },
+          {
+            // A different processor entirely, with its own router. The
+            // rewrite has to reach it too, or the asset leaks the folder.
+            extensions: [".png"],
+            format: "text",
+            router: ({ dir, name, ext }) => ({ dir, name, ext }),
+            readFile: (source) => ({ data: source.text, metadata: {} }),
+            writeFile: (target) => ({ data: target.data })
+          }
+        ]
+      }]
+    }
+
+    const site = await bundler(config)
+    await site.build()
+
+    assert.equal(await exists(path.join(sourceFolder, "_out", "hkeyh", "hello.html")), true)
+    assert.equal(await exists(path.join(sourceFolder, "_out", "hkeyh", "photo.png")), true)
+    assert.equal(await exists(path.join(sourceFolder, "_out", "-key", "hello.html")), false)
+    assert.equal(await exists(path.join(sourceFolder, "_out", "-key", "photo.png")), false)
+    await site.close()
+  })
+})
+
+test("config.router: the source path is stored and looked up unrewritten", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    const { mkdir } = await import("node:fs/promises")
+    await mkdir(path.join(sourceFolder, "-key"), { recursive: true })
+    await writeFile(path.join(sourceFolder, "-key", "hello.md"), "page")
+
+    let seenSourcePath
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      router: hashSecretSegments,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          extensions: [".md", ".html"],
+          format: "text",
+          router: ({ dir, name }) => ({ dir, name, ext: ".html" }),
+          readFile: (source) => {
+            // readFile sees the path as the author wrote it, which is how
+            // it can tell the page is secret at all.
+            seenSourcePath = source.path
+            return { data: source.text, metadata: {} }
+          },
+          writeFile: (target) => ({ data: target.data })
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    await site.build()
+
+    assert.equal(seenSourcePath, path.join("-key", "hello.md"))
+
+    // Stored under the original path, so targetBySource still resolves -
+    // which is what relative-link resolution and the editor's save path
+    // both rely on.
+    const target = site.database.target.getBySource(path.join("-key", "hello.md"))
+    assert.notEqual(target, undefined)
+    assert.equal(target.path, path.join("hkeyh", "hello.html"))
+    assert.notEqual(site.database.source.get(path.join("-key", "hello.md")), undefined)
+    await site.close()
+  })
+})
+
+test("config.router: a stub's path goes through the cascade too", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      router: hashSecretSegments,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          extensions: [".md", ".html"],
+          format: "text",
+          router: ({ dir, name }) => ({ dir, name, ext: ".html" }),
+          stubs: () => [{ path: "-secret/index.md" }],
+          expand: () => ({ text: "generated" }),
+          readFile: (source) => ({ data: source.text, metadata: {} }),
+          writeFile: (target) => ({ data: target.data })
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    await site.build()
+
+    assert.equal(await exists(path.join(sourceFolder, "_out", "hsecreth", "index.html")), true)
+    await site.close()
+  })
+})
+
+test("config.router: returning nothing leaves the path unchanged", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "page.md"), "content")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      router: () => undefined,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          extensions: [".md", ".html"],
+          format: "text",
+          router: ({ dir, name }) => ({ dir, name, ext: ".html" }),
+          readFile: (source) => ({ data: source.text, metadata: {} }),
+          writeFile: (target) => ({ data: target.data })
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    await site.build()
+    assert.equal(await exists(path.join(sourceFolder, "_out", "page.html")), true)
+    await site.close()
+  })
+})
+
+test("config.router: returning a non-string is an error that names the path", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "page.md"), "content")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      router: () => ({ dir: "nope" }),
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          extensions: [".md", ".html"],
+          format: "text",
+          router: ({ dir, name }) => ({ dir, name, ext: ".html" }),
+          readFile: (source) => ({ data: source.text, metadata: {} }),
+          writeFile: (target) => ({ data: target.data })
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    await assert.rejects(() => site.build(), /page\.md/)
   })
 })

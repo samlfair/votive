@@ -47,7 +47,7 @@ test("source: readFile receives project-relative paths, never absolute ones", as
       plugins: [recordingPlugin(seen)]
     }
 
-    await (await bundler(config)).build({ defer: false })
+    await (await (await bundler(config)).build()).deferred
 
     const paths = seen.map(source => source.path).sort()
     assert.deepEqual(paths, ["blog/post.md", "settings.md"])
@@ -76,7 +76,7 @@ test("source: target is where routing sent the file", async () => {
       plugins: [recordingPlugin(seen)]
     }
 
-    await (await bundler(config)).build({ defer: false })
+    await (await (await bundler(config)).build()).deferred
 
     assert.equal(seen[0].target, path.join("blog", "post.html"))
   })
@@ -93,7 +93,7 @@ test("source: text carries the contents, and buffer() reads the same bytes", asy
       plugins: [recordingPlugin(seen)]
     }
 
-    await (await bundler(config)).build({ defer: false })
+    await (await (await bundler(config)).build()).deferred
 
     assert.equal(seen[0].text, "hello there")
     assert.equal(seen[0].buffer().toString("utf-8"), "hello there")

@@ -33,7 +33,7 @@ test("coerceJSON: a target with no metadata reads back as {} instead of throwing
     }
 
     const site = await bundler(config)
-    const result = await site.build({ defer: false })
+    const result = await (await site.build()).deferred
 
     const target = site.database.target.get("a.html")
     assert.ok(target)

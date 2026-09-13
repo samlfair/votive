@@ -48,7 +48,7 @@ test("readSources: a settings contribution is scoped to the source file's own fo
     }
 
     const site = await bundler(config)
-    const first = await site.build({ defer: false })
+    const first = await (await site.build()).deferred
 
     const rootSettings = site.database.setting.getByFolder("")
     const shopSettings = site.database.setting.getByFolder("shop")
