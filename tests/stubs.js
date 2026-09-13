@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import bundler from "../lib/bundle.js"
 import { canonicalParams } from "../lib/stubs.js"
+import createDatabase from "../lib/createDatabase.js"
 
 /** @param {(sourceFolder: string) => Promise<void>} run */
 async function withTempSourceFolder(run) {
@@ -373,6 +374,62 @@ test("readSources: deleting the last source file in a project still prunes it", 
     assert.equal(site.database.source.get("only.md"), undefined, "the source row should be pruned")
     assert.equal(site.database.target.get("only.html"), undefined, "the target row should go with it")
     assert.equal(await exists(path.join(sourceFolder, "_out", "only.html")), false, "and so should the file")
+    await site.close()
+  })
+})
+
+test("source.delete: only deletes a target the source still owns", () => {
+  // Two sources can route to one target path. Vowel avoids it by giving
+  // its homepage stub the same source path an author would use, so
+  // shadowing applies - but the database should not depend on every
+  // plugin getting that right. Deleting a source must not take a target
+  // that now belongs to someone else.
+  const database = createDatabase(":memory:")
+
+  database.target.create({ path: "index.html", metadata: {}, source: "home.md" })
+  database.source.create("index.md", "index.html", 0, "null")
+
+  const deleted = database.source.delete("index.md")
+
+  assert.equal(deleted.path, "index.md", "the source row is still removed")
+  assert.notEqual(database.target.get("index.html"), undefined, "the target survives - home.md owns it")
+})
+
+test("source.delete: still deletes a target the source does own", () => {
+  const database = createDatabase(":memory:")
+
+  database.target.create({ path: "generated.html", metadata: {}, source: "generated.md" })
+  database.source.create("generated.md", "generated.html", 0, "null")
+
+  database.source.delete("generated.md")
+
+  assert.equal(database.target.get("generated.html"), undefined)
+})
+
+test("stubs: a file created at a stub's path takes the row over, and giving it up hands the row back", async () => {
+  // The stub is declared unconditionally, so this is the full round trip:
+  // stub -> authored file -> stub again. The row has to change kind in
+  // both directions, or shadowing never engages and pruning never fires.
+  await withTempSourceFolder(async (sourceFolder) => {
+    const config = configFor(sourceFolder, [textProcessor({
+      stubs: () => [{ path: "home.md" }],
+      expand: () => ({ text: "generated" })
+    })])
+
+    const site = await bundler(config)
+    await site.build()
+    assert.equal(await readFile(path.join(sourceFolder, "_out", "home.html"), "utf-8"), "generated")
+    assert.notEqual(site.database.source.get("home.md").stub, null)
+
+    await writeFile(path.join(sourceFolder, "home.md"), "authored")
+    await site.build()
+    assert.equal(await readFile(path.join(sourceFolder, "_out", "home.html"), "utf-8"), "authored")
+    assert.equal(site.database.source.get("home.md").stub, null, "the row is a file row now")
+
+    await rm(path.join(sourceFolder, "home.md"))
+    await site.build()
+    assert.equal(await readFile(path.join(sourceFolder, "_out", "home.html"), "utf-8"), "generated")
+    assert.notEqual(site.database.source.get("home.md").stub, null, "and a stub row again")
     await site.close()
   })
 })
