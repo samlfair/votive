@@ -1098,7 +1098,15 @@ test("a source whose router returns false has no target: no row, no placeholder,
           router: (info) => info.name === "settings" ? false : { dir: info.dir, name: info.name, ext: ".html" },
           extensions: [".md", ".html"],
           format: "text",
-          readFile: (source) => ({ data: source.text, metadata: { from: source.path }, settings: { site: source.path } }),
+          // Only settings.md contributes the label. Every file contributing
+          // it made two writers for one (folder, label), and reads run five
+          // at a time, so which one won was a coin toss - the flake tracked
+          // in tasks/1-proposed/bundle-test-flake.md.
+          readFile: (source) => ({
+            data: source.text,
+            metadata: { from: source.path },
+            settings: source.path === "settings.md" ? { site: source.path } : undefined
+          }),
           writeFile: (target) => ({ data: target.data ?? "" })
         }]
       }]

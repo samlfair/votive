@@ -440,7 +440,7 @@ test("config.router: a settings.md in a rewritten folder scopes to where its pag
             settings: path.basename(source.path) === "settings.md" ? { tone: "hushed" } : undefined
           }),
           writeFile: (target, { settings }) => {
-            seen = settings.last("tone")
+            seen = settings.lastNonNull("tone")
             return { data: target.data }
           }
         }]
