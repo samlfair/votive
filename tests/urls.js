@@ -5,10 +5,12 @@ import createDatabase from "../lib/createDatabase.js"
 test("urls: redirect/canonical lookup and failure tracking", async (t) => {
   await t.test("get() finds a cached result via the original, redirect, or canonical URL", () => {
     const database = createDatabase(":memory:")
-    database.url.create("https://example.com/a", { title: "A" }, {
+    database.url.create({
+      url: "https://example.com/a",
+      data: { title: "A" },
       redirect: "https://example.com/a-redirected",
       canonical: "https://example.com/canonical-a"
-    })
+    }, "links/a.yaml")
 
     assert.deepEqual(database.url.get("https://example.com/a"), { title: "A" })
     assert.deepEqual(database.url.get("https://example.com/a-redirected"), { title: "A" })
@@ -39,7 +41,7 @@ test("urls: redirect/canonical lookup and failure tracking", async (t) => {
     database.url.recordFailure("https://example.com/flaky", 1000)
     database.url.recordFailure("https://example.com/flaky", 2000)
 
-    database.url.create("https://example.com/flaky", { title: "Recovered" })
+    database.url.create({ url: "https://example.com/flaky", data: { title: "Recovered" } }, "links/flaky.yaml")
 
     const status = database.url.getStatus("https://example.com/flaky")
     assert.equal(status.failedAt, null)

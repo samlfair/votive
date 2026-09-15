@@ -353,16 +353,42 @@ test("settings: one writer per folder and label, cascading by ancestor", async (
   })
 })
 
-test("settings resolvers: last(), flat(), raw()", async (t) => {
-  await t.test("last(): the nearest folder's value, leaf-upward, skipping empty levels", () => {
+test("settings resolvers: last(), lastNonNull(), firstNonNull(), flat(), raw()", async (t) => {
+  await t.test("lastNonNull(): the nearest folder's value, leaf-upward, skipping empty levels", () => {
     const database = createDatabase(":memory:")
     database.setting.write("", { theme: "root" }, "settings.md")
     database.setting.write("blog", { theme: "blog" }, "blog/settings.md")
 
-    assert.equal(database.setting.getByFolder("blog/travel").last("theme"), "blog") // travel unset -> blog
+    assert.equal(database.setting.getByFolder("blog/travel").lastNonNull("theme"), "blog") // travel unset -> blog
+    assert.equal(database.setting.getByFolder("blog").lastNonNull("theme"), "blog")
+    assert.equal(database.setting.getByFolder("other").lastNonNull("theme"), "root")
+    assert.equal(database.setting.getByFolder("").lastNonNull("theme"), "root")
+  })
+
+  await t.test("last(): the folder's own slot, literally - null when the folder itself set nothing", () => {
+    const database = createDatabase(":memory:")
+    database.setting.write("", { theme: "root" }, "settings.md")
+    database.setting.write("blog", { theme: "blog" }, "blog/settings.md")
+
     assert.equal(database.setting.getByFolder("blog").last("theme"), "blog")
-    assert.equal(database.setting.getByFolder("other").last("theme"), "root")
+    // travel set nothing: null, not blog. That is the ambiguity that
+    // used to hide behind one `last`.
+    assert.equal(database.setting.getByFolder("blog/travel").last("theme"), null)
+    assert.equal(database.setting.getByFolder("blog/travel").lastNonNull("theme"), "blog")
     assert.equal(database.setting.getByFolder("").last("theme"), "root")
+    assert.equal(database.setting.getByFolder("").last("neverSet"), undefined)
+  })
+
+  await t.test("firstNonNull(): the root-most value, skipping empty levels downward", () => {
+    const database = createDatabase(":memory:")
+    database.setting.write("blog", { theme: "blog" }, "blog/settings.md")
+    database.setting.write("blog/travel", { theme: "travel" }, "blog/travel/settings.md")
+
+    // root set nothing, so the first non-null is blog's, not travel's.
+    assert.equal(database.setting.getByFolder("blog/travel").firstNonNull("theme"), "blog")
+    assert.equal(database.setting.getByFolder("blog/travel").lastNonNull("theme"), "travel")
+    assert.equal(database.setting.getByFolder("blog/travel").last("theme"), "travel")
+    assert.equal(database.setting.getByFolder("other").firstNonNull("theme"), undefined)
   })
 
   await t.test("flat(): every value at every level, root first", () => {
@@ -389,7 +415,7 @@ test("settings resolvers: last(), flat(), raw()", async (t) => {
     database.setting.write("", { theme: "root" }, "settings.md")
 
     const settings = database.setting.getByFolder("blog")
-    assert.equal(settings.last("neverSet"), undefined)
+    assert.equal(settings.lastNonNull("neverSet"), undefined)
     assert.deepEqual(settings.flat("neverSet"), [])
     assert.equal(settings.raw("neverSet"), undefined)
   })
@@ -412,39 +438,39 @@ test("settings resolvers: last(), flat(), raw()", async (t) => {
     assert.throws(() => database.setting.getByFolder(""), /cannot be labelled "last"/)
   })
 
-  await t.test("last() tracks the deciding level: a change there stales the dependent", () => {
+  await t.test("lastNonNull() tracks the deciding level: a change there stales the dependent", () => {
     const database = createDatabase(":memory:")
     database.target.create({ path: "page.html", metadata: {} })
     database.setting.write("", { theme: "root" }, "settings.md")
     database.setting.write("blog", { theme: "blog" }, "blog/settings.md")
     database.target.markFresh("page.html")
 
-    database.setting.getByFolder("blog/travel", "page.html").last("theme") // decided at "blog"
+    database.setting.getByFolder("blog/travel", "page.html").lastNonNull("theme") // decided at "blog"
 
     database.setting.write("blog", { theme: "blog-2" }, "blog/settings.md")
     assert.equal(isStale(database, "page.html"), true)
   })
 
-  await t.test("last() does not track a level above the deciding one: a change there leaves the dependent fresh", () => {
+  await t.test("lastNonNull() does not track a level above the deciding one: a change there leaves the dependent fresh", () => {
     const database = createDatabase(":memory:")
     database.target.create({ path: "page.html", metadata: {} })
     database.setting.write("", { theme: "root" }, "settings.md")
     database.setting.write("blog", { theme: "blog" }, "blog/settings.md")
     database.target.markFresh("page.html")
 
-    database.setting.getByFolder("blog/travel", "page.html").last("theme") // decided at "blog"; root never read
+    database.setting.getByFolder("blog/travel", "page.html").lastNonNull("theme") // decided at "blog"; root never read
 
     database.setting.write("", { theme: "root-2" }, "settings.md")
     assert.equal(isStale(database, "page.html"), false)
   })
 
-  await t.test("last() tracks the empty levels below the deciding one: a value appearing there stales the dependent", () => {
+  await t.test("lastNonNull() tracks the empty levels below the deciding one: a value appearing there stales the dependent", () => {
     const database = createDatabase(":memory:")
     database.target.create({ path: "page.html", metadata: {} })
     database.setting.write("", { theme: "root" }, "settings.md")
     database.target.markFresh("page.html")
 
-    database.setting.getByFolder("blog/travel", "page.html").last("theme") // read travel (empty), blog (empty), root
+    database.setting.getByFolder("blog/travel", "page.html").lastNonNull("theme") // read travel (empty), blog (empty), root
 
     // The label is already known in the chain, so this is not a
     // first-appearance subtree stale - it has to come from the tracked

@@ -144,7 +144,7 @@ test("fetchURLs: dispatch is by the url's extension, to a format:'url' processor
         assert.equal(entry.canonical, "https://canonical.example/x")
 
         // And once read into the index, any of the three finds it.
-        database.url.accumulate(entry, written[0])
+        database.url.create(entry, written[0])
         assert.deepEqual(database.url.get(`${baseUrl}/old`), { body: "moved" })
         assert.deepEqual(database.url.get(`${baseUrl}/new`), { body: "moved" })
         assert.deepEqual(database.url.get("https://canonical.example/x"), { body: "moved" })

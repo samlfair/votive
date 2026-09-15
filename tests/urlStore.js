@@ -121,22 +121,22 @@ test("urlStore: parseEntry rejects anything but the envelope, naming the file", 
   assert.throws(() => parseEntry("", "links/x.yaml"), /links\/x\.yaml/)
 })
 
-test("url.accumulate: identical entries touch nothing; a changed one stales dependents; deleteBySource forgets", () => {
+test("url.create: identical entries touch nothing; a changed one stales dependents; deleteBySource forgets", () => {
   const database = createDatabase(":memory:")
   database.target.create({ path: "a.html", metadata: {} })
   database.target.create({ path: "b.html", metadata: {} })
   database.url.request("https://x.com/1", "a.html")
   database.url.request("https://x.com/2", "b.html")
 
-  assert.equal(database.url.accumulate({ url: "https://x.com/1", data: { title: "one" } }, "links/1.yaml"), true)
-  assert.equal(database.url.accumulate({ url: "https://x.com/2", data: { title: "two" } }, "links/2.yaml"), true)
+  assert.equal(database.url.create({ url: "https://x.com/1", data: { title: "one" } }, "links/1.yaml"), true)
+  assert.equal(database.url.create({ url: "https://x.com/2", data: { title: "two" } }, "links/2.yaml"), true)
   database.target.markFresh("a.html")
   database.target.markFresh("b.html")
 
-  assert.equal(database.url.accumulate({ url: "https://x.com/1", data: { title: "one" } }, "links/1.yaml"), false)
+  assert.equal(database.url.create({ url: "https://x.com/1", data: { title: "one" } }, "links/1.yaml"), false)
   assert.equal(isStale(database, "a.html"), false)
 
-  assert.equal(database.url.accumulate({ url: "https://x.com/1", data: { title: "one, edited" } }, "links/1.yaml"), true)
+  assert.equal(database.url.create({ url: "https://x.com/1", data: { title: "one, edited" } }, "links/1.yaml"), true)
   assert.equal(isStale(database, "a.html"), true)
   assert.deepEqual(database.url.get("https://x.com/1"), { title: "one, edited" })
 
@@ -145,11 +145,11 @@ test("url.accumulate: identical entries touch nothing; a changed one stales depe
   assert.equal(database.url.get("https://x.com/2"), undefined)
 })
 
-test("url.accumulate: a file supplying a url clears its failure state", () => {
+test("url.create: a file supplying a url clears its failure state", () => {
   const database = createDatabase(":memory:")
   database.url.recordFailure("https://x.com/1")
   assert.equal(database.url.getStatus("https://x.com/1").failureCount, 1)
-  database.url.accumulate({ url: "https://x.com/1", data: { ok: true } }, "links/1.yaml")
+  database.url.create({ url: "https://x.com/1", data: { ok: true } }, "links/1.yaml")
   assert.equal(database.url.getStatus("https://x.com/1").failureCount, 0)
 })
 

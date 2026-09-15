@@ -342,8 +342,8 @@ test("config.router: a stub's path goes through the cascade too", async () => {
           extensions: [".md", ".html"],
           format: "text",
           router: ({ dir, name }) => ({ dir, name, ext: ".html" }),
-          stubs: () => [{ path: "-secret/index.md" }],
-          expand: () => ({ text: "generated" }),
+          createStubs: () => [{ path: "-secret/index.md" }],
+          expandStubs: () => ({ text: "generated" }),
           readFile: (source) => ({ data: source.text, metadata: {} }),
           writeFile: (target) => ({ data: target.data })
         }]
@@ -409,5 +409,50 @@ test("config.router: returning a non-string is an error that names the path", as
 
     const site = await bundler(config)
     await assert.rejects(() => site.build(), /page\.md/)
+  })
+})
+
+test("config.router: a settings.md in a rewritten folder scopes to where its pages land", async () => {
+  // Settings are contributed by source and read by target folder. With
+  // the cascade those differ for a secret folder, so the contribution
+  // has to follow the rewrite or the pages beside it never see it.
+  await withTempSourceFolder(async (sourceFolder) => {
+    const { mkdir } = await import("node:fs/promises")
+    await mkdir(path.join(sourceFolder, "-key"), { recursive: true })
+    await writeFile(path.join(sourceFolder, "-key", "settings.md"), "secret settings")
+    await writeFile(path.join(sourceFolder, "-key", "page.md"), "page")
+
+    let seen
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      router: hashSecretSegments,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          extensions: [".md", ".html"],
+          format: "text",
+          router: ({ dir, name }) => name === "settings" ? false : { dir, name, ext: ".html" },
+          readFile: (source) => ({
+            data: source.text,
+            metadata: {},
+            settings: path.basename(source.path) === "settings.md" ? { tone: "hushed" } : undefined
+          }),
+          writeFile: (target, { settings }) => {
+            seen = settings.last("tone")
+            return { data: target.data }
+          }
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    await site.build()
+
+    assert.equal(seen, "hushed", "the page in the hashed folder reads the settings.md beside it")
+    assert.deepEqual(site.database.setting.getByFolder("hkeyh").tone, [null, ["hushed"]])
+    assert.equal(site.database.setting.getByFolder("-key").tone, undefined, "nothing is scoped to the unrewritten name")
+    await site.close()
   })
 })

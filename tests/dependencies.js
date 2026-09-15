@@ -123,7 +123,7 @@ test("dependencies: folder/folder_recursive typing and invalidation", async (t) 
       { dependent: "post.html", type: "url" }
     ])
 
-    database.url.create("https://example.com/embed", { title: "Example" })
+    database.url.create({ url: "https://example.com/embed", data: { title: "Example" } }, "links/embed.yaml")
     assert.deepEqual(database.url.get("https://example.com/embed"), { title: "Example" })
     const stale = database.target.getStale().map(target => target.path)
     assert.deepEqual(stale, ["post.html"])
