@@ -425,112 +425,6 @@ test("bundle: a writeFile that throws rolls the build back, leaving the database
   })
 })
 
-test("hooks: a readFolder that returns {} doesn't crash the build", async () => {
-  await withTempSourceFolder(async (sourceFolder) => {
-    await writeFile(path.join(sourceFolder, "a.md"), "hello")
-
-    const config = {
-      sourceFolder,
-      targetFolder: path.join(sourceFolder, "_out"),
-      verbose: false,
-      plugins: [{
-        name: "test-plugin",
-        processors: [{
-          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
-          extensions: [".md", ".html"],
-          format: "text",
-          readFile: (source) => ({ data: source.text, metadata: {} }),
-          // The whole point: no urls, no targets, no settings.
-          readFolder: () => ({}),
-          writeFile: (target) => ({ data: target.data ?? "" })
-        }]
-      }]
-    }
-
-    const site = await bundler(config)
-    await (await site.build()).deferred
-  })
-})
-
-test("hooks: a readFolder that returns nothing at all doesn't crash the build", async () => {
-  await withTempSourceFolder(async (sourceFolder) => {
-    await writeFile(path.join(sourceFolder, "a.md"), "hello")
-
-    const config = {
-      sourceFolder,
-      targetFolder: path.join(sourceFolder, "_out"),
-      verbose: false,
-      plugins: [{
-        name: "test-plugin",
-        processors: [{
-          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
-          extensions: [".md", ".html"],
-          format: "text",
-          readFile: (source) => ({ data: source.text, metadata: {} }),
-          readFolder: () => undefined,
-          writeFile: (target) => ({ data: target.data ?? "" })
-        }]
-      }]
-    }
-
-    const site = await bundler(config)
-    await (await site.build()).deferred
-  })
-})
-
-test("hooks: a readFolder returning urls but no targets still has its urls fetched", async () => {
-  await withTempSourceFolder(async (sourceFolder) => {
-    // A *subfolder*, deliberately: the root branch always pushed its urls,
-    // but the per-folder branch only returned them when `targets` was also
-    // truthy, so a readFolder producing urls alone had them dropped.
-    await mkdir(path.join(sourceFolder, "blog"))
-    await writeFile(path.join(sourceFolder, "blog", "a.md"), "hello")
-
-    /** @type {string[]} */
-    const fetched = []
-    const server = await withServer((req, res) => {
-      fetched.push(req.url)
-      res.writeHead(200, { "content-type": "text/plain" })
-      res.end("ok")
-    })
-
-    try {
-      const config = {
-        sourceFolder,
-        targetFolder: path.join(sourceFolder, "_out"),
-        verbose: false,
-        plugins: [{
-          name: "test-plugin",
-          processors: [{
-            router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
-            extensions: [".md", ".html"],
-            format: "text",
-            readFile: (source) => ({ data: source.text, metadata: {} }),
-            // A url, deliberately with no `targets` alongside it.
-            // Note the trailing slash: readFolder receives "blog/", not "blog".
-            readFolder: ({ path: folderPath }, { api }) => {
-              if (folderPath.startsWith("blog")) api.url(`${server.baseUrl}/from-folder`)
-              return {}
-            },
-            writeFile: (target) => ({ data: target.data ?? "" })
-          }, {
-            format: "url",
-            extensions: [""],
-            readURL: async (response) => ({ path: "h/from-folder", data: { body: await response.text() } })
-          }]
-        }]
-      }
-
-      const site = await bundler(config)
-      await (await site.build()).deferred
-
-      assert.deepEqual(fetched, ["/from-folder"])
-    } finally {
-      await server.close()
-    }
-  })
-})
-
 test("hooks: a writeFile returning nothing leaves the target alone instead of deleting it", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "a.md"), "hello")
@@ -650,7 +544,6 @@ test("hooks: every hook's context is exactly { api, settings, config }, and read
           format: "text",
           readFile: (source, context) => { record("readFile")(source, context); return { data: source.text, metadata: {} } },
           transformFile: record("transformFile"),
-          readFolder: record("readFolder"),
           writeFile: record("writeFile")
         }]
       }]
@@ -659,7 +552,7 @@ test("hooks: every hook's context is exactly { api, settings, config }, and read
     const site = await bundler(config)
     await (await site.build()).deferred
 
-    for (const hook of ["readFile", "transformFile", "readFolder", "writeFile"]) {
+    for (const hook of ["readFile", "transformFile", "writeFile"]) {
       assert.deepEqual(seen[hook], ["api", "config", "settings"], `${hook} context keys`)
     }
     assert.equal(seen.readFileSettings, true, "readFile's settings is undefined")
@@ -1128,5 +1021,37 @@ test("a source whose router returns false has no target: no row, no placeholder,
     await (await site.build({ changed: [], deleted: ["settings.md"] })).deferred
     assert.equal(site.database.setting.getByFolder("").site, undefined)
     assert.ok(site.database.target.get("a.html"))
+  })
+})
+
+test("a plugin declaring readFolder fails loudly, naming the plugin and the replacement", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{ name: "old-plugin", processors: [{ extensions: [".md"], format: "text", readFolder: () => ({}) }] }]
+    }
+    const site = await bundler(config)
+    await assert.rejects(() => site.build(), /old-plugin.*readFolder.*createStubs/s)
+  })
+})
+
+test("a read hook returning `targets` fails loudly rather than silently producing nothing", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "a.md"), "a")
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{ name: "old-plugin", processors: [{
+        extensions: [".md", ".html"], format: "text",
+        router: ({ dir, name }) => ({ dir, name, ext: ".html" }),
+        readFile: () => ({ metadata: {}, targets: [{ path: "extra.html", metadata: {} }] }),
+        writeFile: () => ({ data: "" })
+      }] }]
+    }
+    const site = await bundler(config)
+    await assert.rejects(() => site.build(), /targets.*no longer exists.*createStubs/s)
   })
 })

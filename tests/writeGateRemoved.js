@@ -26,16 +26,15 @@ test("writeTargets: a target with an empty abstract is still written - the plugi
       plugins: [{
         name: "test-plugin",
         processors: [{
-          router: ({ name, dir }) => name === "trigger" ? { dir: [], name: "trigger", ext: ".html" } : false,
+          router: ({ name, dir }) => ({ dir, name, ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
-          readFile: (source, { api }) => {
-            // Deliberately empty abstract, matching the shape a
-            // dispatch-by-path writer (like xml/index.js's sitemap/feed
-            // targets) uses today - it never reads `abstract` at all.
-            api.createTarget({ path: "always-written.html", metadata: {} })
-            return { metadata: {} }
-          },
+          // The always-written target is a stub: a source with no metadata
+          // worth speaking of, matching the shape a dispatch-by-path writer
+          // (like xml/index.js's sitemap/feed) has - it never reads any.
+          createStubs: () => [{ path: "always-written.md" }],
+          expandStubs: () => ({ text: "" }),
+          readFile: () => ({ metadata: {} }),
           writeFile: (target) => ({ data: `written:${target.path}` })
         }]
       }]

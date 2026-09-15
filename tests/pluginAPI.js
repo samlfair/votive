@@ -51,6 +51,8 @@ test("plugin callbacks receive a restricted api instead of the full database", a
 
     // Only the curated methods are exposed - not the full database surface.
     assert.deepEqual(Object.keys(seenAPI).sort(), ["createTarget", "target", "targetBySource", "targets", "url"])
+    // createTarget is still a key only so that calling it explains itself.
+    assert.throws(() => seenAPI.createTarget({ path: "x.html" }), /no longer exists.*createStubs/s)
 
     // api.target()/api.targets() read with the current file pre-loaded as
     // the dependent - reading b.html from within a.html's writeFile
@@ -64,33 +66,3 @@ test("plugin callbacks receive a restricted api instead of the full database", a
   })
 })
 
-test("api.createTarget() from readFile() persists a new target", async () => {
-  await withTempSourceFolder(async (sourceFolder) => {
-    await writeFile(path.join(sourceFolder, "post.md"), "content")
-
-    const config = {
-      sourceFolder,
-      targetFolder: path.join(sourceFolder, "_out"),
-      verbose: false,
-      plugins: [{
-        name: "test-plugin",
-        processors: [{
-          router: ({ name, dir }) => ({ dir, name, ext: ".html" }),
-          extensions: [".md", ".html"],
-          format: "text",
-          writeFile: () => ({ data: "" }),
-          readFile: (source, { api }) => {
-            api.createTarget({ path: "generated.html", metadata: { generated: "yes" } })
-            return { metadata: {} }
-          }
-        }]
-      }]
-    }
-
-    const site = await bundler(config)
-    const first = await (await site.build()).deferred
-
-    assert.ok(site.database.target.get("generated.html"))
-    assert.equal(site.database.target.get("generated.html").metadata.generated, "yes")
-  })
-})
