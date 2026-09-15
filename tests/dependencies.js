@@ -116,7 +116,7 @@ test("dependencies: folder/folder_recursive typing and invalidation", async (t) 
     database.target.markFresh("post.html")
     database.target.markFresh("other.html")
 
-    database.url.request("https://example.com/embed", "post.html", { readURL: () => ({}) })
+    database.url.request("https://example.com/embed", "post.html")
 
     const rows = database.dependency.getAllByTarget("https://example.com/embed")
     assert.deepEqual(rows.map(r => ({ dependent: r.dependent, type: r.type })), [

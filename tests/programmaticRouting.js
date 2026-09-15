@@ -199,7 +199,6 @@ test("readFile: an api.url() call attributes to the routed target path", async (
           extensions: [".md", ".html"],
           format: "text",
           writeFile: (target) => ({ data: `written:${target.path}` }),
-          readURL: () => ({ title: "Thing" }),
           readFile: (source, { api }) => {
             // The api is real and pre-bound to targetPath - the path the
             // request attributes to is settled before read() is even

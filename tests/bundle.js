@@ -5,6 +5,7 @@ import { mkdtemp, writeFile, rm, readFile, mkdir, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import bundler from "../lib/bundle.js"
+import { hostSlug } from "../lib/urlStore.js"
 
 /** @param {(sourceFolder: string) => Promise<void>} run */
 async function withTempSourceFolder(run) {
@@ -72,11 +73,17 @@ test("bundle: buffer processing and URL fetches a plugin claims are both deferre
               extensions: [".md"],
               format: "text",
               writeFile: () => ({ data: "" }),
-              readURL: (data) => ({ fetched: data }),
               readFile(source, { api }) {
                 api.url(source.text.trim())
                 return { metadata: {} }
               }
+            },
+            {
+              // Who parses a fetched url is decided by its extension, not by
+              // who asked: a `format: "url"` processor. "" is "no extension".
+              format: "url",
+              extensions: [""],
+              readURL: async (response) => ({ path: `${hostSlug(response.url)}${response.url.pathname}`, data: { fetched: await response.text() } })
             }
           ]
         }]
@@ -133,12 +140,17 @@ test("bundle: a deferred fetch auto-triggers a rebuild that picks up the newly-s
             extensions: [".md", ".html"],
             format: "text",
             writeFile: () => { writeFileCalls++; return { data: "" } },
-            readURL: (data) => ({ fetched: data }),
             readFile(source, { api }) {
               api.url(source.text.trim())
               return { data: "page", metadata: {} }
             }
-          }]
+          }, {
+              // Who parses a fetched url is decided by its extension, not by
+              // who asked: a `format: "url"` processor. "" is "no extension".
+              format: "url",
+              extensions: [""],
+              readURL: async (response) => ({ path: `${hostSlug(response.url)}${response.url.pathname}`, data: { fetched: await response.text() } })
+            }]
         }]
       }
 
@@ -500,8 +512,11 @@ test("hooks: a readFolder returning urls but no targets still has its urls fetch
               if (folderPath.startsWith("blog")) api.url(`${server.baseUrl}/from-folder`)
               return {}
             },
-            readURL: async (response) => ({ body: await response.text() }),
             writeFile: (target) => ({ data: target.data ?? "" })
+          }, {
+            format: "url",
+            extensions: [""],
+            readURL: async (response) => ({ path: "h/from-folder", data: { body: await response.text() } })
           }]
         }]
       }
@@ -751,14 +766,24 @@ test("hooks: a readURL that never reads the body leaves it unread", async () => 
     // before anyone had seen the response.
     const readURL = (response) => {
       bodyRead = false
-      return { status: response.status }
+      return { path: "h/x", data: { status: response.status } }
     }
-    database.url.request(`${server.baseUrl}/x`, "", { readURL })
+    database.url.request(`${server.baseUrl}/x`, "")
 
-    await fetchURLs({ plugins: [] }, database).runFetches()
+    const { mkdtemp, rm, readFile: readText, readdir } = await import("node:fs/promises")
+    const { tmpdir } = await import("node:os")
+    const sourceFolder = await mkdtemp(path.join(tmpdir(), "votive-readurl-"))
+    try {
+      const processors = [{ plugin: { name: "t" }, processor: { format: "url", extensions: [""], readURL } }]
+      const { written } = await fetchURLs({ sourceFolder, urlStore: "links", urlHostInterval: 0 }, database, processors).runFetches()
 
-    assert.equal(bodyRead, false)
-    assert.deepEqual(database.url.get(`${server.baseUrl}/x`), { status: 200 })
+      assert.equal(bodyRead, false)
+      // The result is filed, not indexed: the follow-up build reads it.
+      assert.equal(written.length, 1)
+      assert.match(await readText(path.join(sourceFolder, written[0]), "utf-8"), /status: 200/)
+    } finally {
+      await rm(sourceFolder, { recursive: true, force: true })
+    }
   } finally {
     await server.close()
   }

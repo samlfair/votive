@@ -143,7 +143,6 @@ test("readBuffers: deferred buffer processing", async (t) => {
           extensions: [".bin"],
           format: "buffer",
           router: ({ name, dir, ext }) => ({ name, dir, ext }),
-          readURL: () => ({ title: "Photo" }),
           readFile(source, { api }) {
             readFileCalls++
             api.url("https://example.com/photo")
