@@ -2,11 +2,6 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import createDatabase from "../lib/createDatabase.js"
 
-function stopwatch() {
-  const start = performance.now()
-  return () => console.log(`${performance.now() - start}ms`)
-}
-
 /** @param {ReturnType<createDatabase>} database */
 function seed(database, targets) {
   for (const target of targets) database.target.create(target)
@@ -26,10 +21,7 @@ test("target.getMany filters", async (t) => {
       { path: "a.html", metadata: { status: "published" } },
       { path: "b.html", metadata: { status: "draft" } },
     ])
-
-    const stop = stopwatch()
     assert.deepEqual(paths(database, { status: "published" }), ["a.html"])
-    stop()
   })
 
   await t.test("'~' is contains: the field is an array with the value as an element", () => {
@@ -39,10 +31,7 @@ test("target.getMany filters", async (t) => {
       { path: "b.html", metadata: { tags: ["Crypto"] } },
       { path: "c.html", metadata: { tags: "AI" } },
     ])
-
-    const stop = stopwatch()
     assert.deepEqual(paths(database, { tags: { "~": "AI" } }), ["a.html"])
-    stop()
   })
 
   await t.test("a bare scalar against an array field is equality, not contains", () => {
@@ -61,10 +50,7 @@ test("target.getMany filters", async (t) => {
       { path: "a.html", metadata: { tags: ["AI", "Crypto", "Web3"] } },
       { path: "b.html", metadata: { tags: ["AI"] } },
     ])
-
-    const stop = stopwatch()
     assert.deepEqual(paths(database, { tags: ["AI", "Crypto"] }), ["a.html"])
-    stop()
   })
 
   await t.test("'~' with an array behaves the same as a bare array", () => {
@@ -73,10 +59,7 @@ test("target.getMany filters", async (t) => {
       { path: "a.html", metadata: { tags: ["AI", "Crypto"] } },
       { path: "b.html", metadata: { tags: ["AI"] } },
     ])
-
-    const stop = stopwatch()
     assert.deepEqual(paths(database, { tags: { "~": ["AI", "Crypto"] } }), ["a.html"])
-    stop()
   })
 
   await t.test("'!' under a field negates equality, including missing fields (what '!=' used to be)", () => {
@@ -86,10 +69,7 @@ test("target.getMany filters", async (t) => {
       { path: "b.html", metadata: { status: "draft" } },
       { path: "c.html", metadata: { title: "C" } },
     ])
-
-    const stop = stopwatch()
     assert.deepEqual(paths(database, { status: { "!": "published" } }).sort(), ["b.html", "c.html"])
-    stop()
   })
 
   await t.test("bare 'null' means the property is absent or explicitly null", () => {
@@ -99,10 +79,7 @@ test("target.getMany filters", async (t) => {
       { path: "b.html", metadata: { deletedAt: null, title: "B" } },
       { path: "c.html", metadata: { title: "C" } },
     ])
-
-    const stop = stopwatch()
     assert.deepEqual(paths(database, { deletedAt: null }).sort(), ["b.html", "c.html"])
-    stop()
   })
 
   await t.test("comparison operators", () => {
@@ -111,14 +88,8 @@ test("target.getMany filters", async (t) => {
       { path: "a.html", metadata: { rating: 3 } },
       { path: "b.html", metadata: { rating: 5 } },
     ])
-
-    const stop1 = stopwatch()
     assert.deepEqual(paths(database, { rating: { ">": 4 } }), ["b.html"])
-    stop1()
-
-    const stop2 = stopwatch()
     assert.deepEqual(paths(database, { rating: { "<=": 3 } }), ["a.html"])
-    stop2()
   })
 
   await t.test("'any of these' is '|' over the field (what 'in'/'any' used to be)", () => {
@@ -127,10 +98,7 @@ test("target.getMany filters", async (t) => {
       { path: "a.html", metadata: { country: "Canada" } },
       { path: "b.html", metadata: { country: "France" } },
     ])
-
-    const stop = stopwatch()
     assert.deepEqual(paths(database, { country: { "|": ["Canada", "USA"] } }), ["a.html"])
-    stop()
   })
 
   await t.test("a label spelled like a former operator is just a label", () => {
@@ -150,12 +118,9 @@ test("target.getMany filters", async (t) => {
       { path: "a.html", metadata: { author: { expertise: ["AI", "Crypto"], country: "Canada" } } },
       { path: "b.html", metadata: { author: { expertise: ["AI"], country: "France" } } },
     ])
-
-    const stop = stopwatch()
      const results = paths(database, {
       author: { expertise: ["AI", "Crypto"], country: { "|": ["Canada", "USA"] } }
     })
-    stop()
     assert.deepEqual(results, ["a.html"])
   })
 
@@ -166,15 +131,12 @@ test("target.getMany filters", async (t) => {
       { path: "b.html", metadata: { category: "Food", rating: 5 } },
       { path: "c.html", metadata: { category: "Food", rating: 1 } },
     ])
-
-    const stop = stopwatch()
     const results = paths(database, {
       "|": [
         { category: "Tech" },
         { rating: { ">": 4 } }
       ]
     })
-    stop()
 
     assert.deepEqual(results.sort(), ["a.html", "b.html"])
   })
@@ -190,8 +152,6 @@ test("target.getMany filters", async (t) => {
       { path: "lowviews.html", metadata: { status: "published", views: 500, author: { country: "Canada", theme: "Winter" } } },
     ])
     // The CLAUDE.md example filter: published, enough views, and (Canadian OR American OR not-Summer-themed).
-
-    const stop = stopwatch()
     const results = paths(database, {
       status: "published",
       views: { ">": 1000 },
@@ -203,7 +163,6 @@ test("target.getMany filters", async (t) => {
         ]
       }
     })
-    stop()
 
     assert.deepEqual(results.sort(), ["canada.html", "notsummer.html", "usa.html"])
   })
@@ -213,10 +172,7 @@ test("target.getMany filters", async (t) => {
     seed(database, [
       { path: "a.html", metadata: { status: "published" } },
     ])
-
-    const stop = stopwatch()
     assert.deepEqual(paths(database, {}), ["a.html"])
-    stop()
   })
   await t.test("! over a multi-key object is NOT(AND), not NOT(OR)", () => {
     const database = createDatabase(":memory:")
