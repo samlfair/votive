@@ -33,12 +33,13 @@ async function withProject(run) {
  * files the result under the host and records whatever `parse` makes of
  * the response.
  */
-function urlProcessor(parse, extensions = [""]) {
+function urlProcessor(parse, extensions = [""], mediaTypes = ["text/plain"]) {
   return {
     plugin: { name: "test-url-plugin" },
     processor: {
       format: "url",
       extensions,
+      mediaTypes,
       readURL: async (response) => ({ path: `${hostSlug(response.url)}${response.url.pathname}`, data: await parse(response) })
     }
   }
@@ -50,38 +51,52 @@ async function writtenEntry(config, relativePath) {
 }
 
 test("fetchURLs: dispatch is by the url's extension, to a format:'url' processor", async (t) => {
-  await t.test("a url with no matching processor is not fetched, and runFetches() reports nothing done", async () => {
+  await t.test("a response nobody claims is dropped, warned about, and cooled down - not refetched every build", async () => {
     let requests = 0
-    const { baseUrl, close } = await withServer((req, res) => { requests++; res.writeHead(200); res.end() })
+    const { baseUrl, close } = await withServer((req, res) => { requests++; res.writeHead(200, { "content-type": "text/calendar" }); res.end("BEGIN:VCALENDAR") })
 
     try {
       await withProject(async (config) => {
         const database = createDatabase(":memory:")
-        database.url.request(`${baseUrl}/page`, "post.html")
+        database.url.request(`${baseUrl}/events`, "post.html")
+        const warnings = []
+        const logging = { ...config, log: (level, message) => level === "warn" && warnings.push(message) }
 
-        // The only processor handles .mp3; this url has no extension.
-        const { attempted } = await fetchURLs(config, database, [urlProcessor(() => ({}), [".mp3"])]).runFetches()
+        // The only processor parses html; this is a calendar.
+        const processors = [urlProcessor(() => ({}), [".html"], ["text/html"])]
+        const { attempted, written } = await fetchURLs(logging, database, processors).runFetches()
 
-        assert.equal(attempted, 0)
-        assert.equal(requests, 0)
-        // The dependency is still recorded: adding a processor for ""
-        // later restales the page.
-        assert.equal(database.dependency.getAllByTarget(`${baseUrl}/page`).length, 1)
+        assert.equal(attempted, 1, "it had to be fetched to find out what it was")
+        assert.deepEqual(written, [])
+        assert.match(warnings[0], /no url processor for text\/calendar/)
+        assert.equal(database.url.getStatus(`${baseUrl}/events`).failureCount, 1, "cooled down so the next build does not refetch it")
+        assert.equal(database.dependency.getAllByTarget(`${baseUrl}/events`).length, 1, "the dependency stays: a processor added later restales the page")
+
+        database.url.request(`${baseUrl}/events`, "post.html")
+        await fetchURLs(logging, database, processors).runFetches()
+        assert.equal(requests, 1)
       })
     } finally {
       await close()
     }
   })
 
-  await t.test("'' matches an extension-less url and nothing else; there is no wildcard", () => {
-    const empty = urlProcessor(() => ({}), [""])
-    const mp3 = urlProcessor(() => ({}), [".mp3"])
-    const both = [empty, mp3]
-    assert.equal(processorFor(both, "https://a.com/page"), empty.processor)
-    assert.equal(processorFor(both, "https://a.com/"), empty.processor)
-    assert.equal(processorFor(both, "https://a.com/song.mp3"), mp3.processor)
-    assert.equal(processorFor(both, "https://a.com/cal.ical"), undefined)
-    assert.equal(processorFor([mp3], "https://a.com/page"), undefined)
+  await t.test("dispatch is by the response's media type first, then the url's extension; no wildcard", () => {
+    const html = urlProcessor(() => ({}), [".html"], ["text/html"])
+    const mp3 = urlProcessor(() => ({}), [".mp3"], ["audio/mpeg"])
+    const both = [html, mp3]
+    const response = (type) => ({ headers: new Headers(type ? { "content-type": type } : {}) })
+
+    // A domain-shaped last segment is not an extension: the server says html.
+    assert.equal(processorFor(both, "https://bsky.app/profile/littlefair.ca", response("text/html; charset=utf-8")), html.processor)
+    assert.equal(processorFor(both, "https://a.com/song.mp3", response("audio/mpeg")), mp3.processor)
+    // No usable type: the extension decides.
+    assert.equal(processorFor(both, "https://a.com/song.mp3", response(undefined)), mp3.processor)
+    assert.equal(processorFor(both, "https://a.com/song.mp3", response("application/octet-stream")), mp3.processor)
+    // The server's word beats the extension when both are present.
+    assert.equal(processorFor(both, "https://a.com/page.mp3", response("text/html")), html.processor)
+    assert.equal(processorFor(both, "https://a.com/cal.ical", response("text/calendar")), undefined)
+    assert.throws(() => processorFor([html, html], "https://a.com/x", response("text/html")), /Two url processors claim "text\/html"/)
   })
 
   await t.test("does not fetch until runFetches() is called, then files what the processor returned", async () => {
