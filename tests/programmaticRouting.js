@@ -456,3 +456,49 @@ test("config.router: a settings.md in a rewritten folder scopes to where its pag
     await site.close()
   })
 })
+
+test("a source's settings apply to the folder its target is in, wherever routing sent it", async () => {
+  // Settings are read by target folder, so they are written by target
+  // folder. A router that moves a file across folders moves its settings
+  // contribution with it; the source folder is not what anything reads.
+  await withTempSourceFolder(async (sourceFolder) => {
+    const { mkdir } = await import("node:fs/promises")
+    await mkdir(path.join(sourceFolder, "drafts"), { recursive: true })
+    await writeFile(path.join(sourceFolder, "drafts", "intro.md"), "moves to published/")
+    await mkdir(path.join(sourceFolder, "published"), { recursive: true })
+    await writeFile(path.join(sourceFolder, "published", "other.md"), "already here")
+
+    let seen
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          extensions: [".md", ".html"],
+          format: "text",
+          // drafts/* lands in published/.
+          router: ({ dir, name }) => ({ dir: dir.map(d => d === "drafts" ? "published" : d), name, ext: ".html" }),
+          readFile: (source) => ({
+            data: source.text,
+            metadata: {},
+            settings: source.path.startsWith("drafts") ? { stage: "moved" } : undefined
+          }),
+          writeFile: (target, { settings }) => {
+            if (target.path === path.join("published", "other.html")) seen = settings.lastNonNull("stage")
+            return { data: target.data }
+          }
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    await site.build()
+
+    assert.equal(seen, "moved", "the neighbour in the target folder reads it")
+    assert.deepEqual(site.database.setting.getByFolder("published").stage, [null, ["moved"]])
+    assert.equal(site.database.setting.getByFolder("drafts").stage, undefined, "nothing is scoped to the source folder")
+    await site.close()
+  })
+})
