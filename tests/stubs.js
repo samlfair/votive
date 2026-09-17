@@ -256,6 +256,7 @@ test("createStubs: the enumerator's api reads register no dependency rows", asyn
         api.target("post.html")
         api.targetBySource("post.md")
         api.metadataValues("body")
+        api.settingValues("theme")
         return [{ path: "index.md" }]
       },
       expandStubs: () => ({ text: "index" })

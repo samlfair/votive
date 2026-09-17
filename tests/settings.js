@@ -524,3 +524,19 @@ test("schema version: an on-disk database from a different user_version is disca
     await rm(folder, { recursive: true, force: true })
   }
 })
+
+test("setting.distinct: every distinct value written for a label at any folder, objects parsed", () => {
+  const database = createDatabase(":memory:")
+  database.setting.write("", { theme: "default", title: "Site" }, "settings.md")
+  database.setting.write("blog", { theme: { name: "default", colors: ["#111", "#222"] } }, "blog/settings.md")
+  database.setting.write("shop", { theme: "reset" }, "shop/settings.md")
+  database.setting.write("shop/hats", { theme: "reset" }, "shop/hats/settings.md")
+
+  const themes = database.setting.distinct("theme")
+  assert.deepEqual(themes.map(value => JSON.stringify(value)).sort(), [
+    JSON.stringify({ name: "default", colors: ["#111", "#222"] }),
+    JSON.stringify("default"),
+    JSON.stringify("reset")
+  ].sort())
+  assert.deepEqual(database.setting.distinct("nothing"), [])
+})
