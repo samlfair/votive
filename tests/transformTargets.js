@@ -111,3 +111,34 @@ test("transformTargets: a transformFile hook can still queue urls alongside tran
     assert.deepEqual(site.database.target.get("page.html").metadata, { scanned: "yes" })
   })
 })
+
+test("transformTargets: a partial result is merged - keys not returned keep their value and their declared type", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "page.md"), "content")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          router: () => ({ dir: [], name: "page", ext: ".html" }),
+          extensions: [".md", ".html"],
+          format: "text",
+          writeFile: () => ({ data: "" }),
+          readFile: () => ({ data: "content", metadata: { tag: "p", date: { $type: "date", $value: "2026-01-01" } } }),
+          transformFile: () => ({ metadata: { transformed: "yes" } })
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    await (await site.build()).deferred
+
+    const target = site.database.target.get("page.html")
+    assert.deepEqual(target.metadata, { tag: "p", date: "2026-01-01", transformed: "yes" })
+    assert.equal(target.types.date, "date")
+    await site.close()
+  })
+})
