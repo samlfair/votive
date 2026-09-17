@@ -1,32 +1,70 @@
 # Votive
 
-*File processor*
+A file processor. Votive watches a folder of sources, hands each one to
+a plugin, and writes what comes back into a target folder — rebuilding
+only what changed, because it remembers what every output depended on.
+It ships a dev server with live reload, and it is what
+[Vowel](https://github.com/samlfair/vowel) is built on.
 
-- Includes the dev server (`startServer`), formerly the separate `voot` package
-- Bundles [Vowel](https://github.com/samlfair/vowel)
+```js
+import votive from "votive"
 
-## Roadmap
+const site = await votive({ sourceFolder, targetFolder, plugins })
+await site.build()
+await site.close()
+```
 
-### Priorities
+## Five concepts
 
-- [x] Improve buffer handling
-- [x] Flesh out get-many targets logic
-- [x] Add get-url logic
+- **Source** — a file under `sourceFolder`, or a *stub*: a source a
+  plugin declares rather than the author writes (a tag index, a
+  sitemap). A source is read by the processor that claims its
+  extension.
+- **Target** — one output file, with `data` (its content) and
+  `metadata`. A source routes to at most one target; a source that
+  routes nowhere has none.
+- **Folder** — the scope of a *setting*. A setting written for
+  `blog/` cascades to everything beneath it; a plugin resolves a label
+  through `settings.last()`, `settings.flat()` or `settings.raw()`.
+- **URL** — something a plugin asked for with `api.url()`. Fetched
+  after the build, parsed by a `readURL` hook, kept in a project-owned
+  store, and never refetched until the entry is deleted.
+- **Dependency** — recorded the moment a hook *reads* a target
+  property, a folder listing, a setting or a URL. When that thing
+  changes, every target that read it is marked stale and rewritten.
+  Nothing is a dependency until something asked.
 
-### More
+## A plugin
 
-- [x] Rename jobs and paths
-- [x] Folders (see spec below)
-- [x] File deletion handling
+A plugin is a list of processors. A processor owns some extensions and
+says how a source of those becomes a target:
 
-## Project: Folders
+```js
+export default {
+  name: "text",
+  processors: [{
+    extensions: [".txt"],
+    router: ({ dir, name }) => `${dir}/${name}.html`,
+    readFile: (source) => ({
+      data: source.text,
+      metadata: { title: source.text.split("\n")[0] }
+    }),
+    writeFile: (target, { api }) => {
+      const others = api.targets({ folder: "" })   // tracked: a new .txt stales this page
+      return { data: `<h1>${target.metadata.title}</h1><p>${others.length} pages</p>` }
+    }
+  }]
+}
+```
 
-Add a `folders` table so folders are first-class entities, like targets. Merge `settings` into `metadata` by adding a `type` column (`target` | `folder`) — a setting is just metadata scoped to a folder instead of a target.
+`readFile` parses; `writeFile` renders. Between them `transformFile`
+may rewrite `data`/`metadata` once every target exists, and
+`createStubs`/`expandStubs` declare and produce synthetic sources. The
+whole contract — every hook, what it receives and what it may return —
+is the typedef block at the top of `lib/bundle.js`.
 
-`dependencies` gets its own `type` column: `target | folder | folder_recursive`. A dependency can point at a specific target (as today), at a folder (invalidated by direct children only), or at a folder recursively (invalidated by anything in that folder or its subfolders). No filters for now — depending on a folder means depending on everything in its scope.
+## Reading further
 
-This replaces today's `markDescendentsStale("%")` fallback in `source.create`, which invalidates every target in the site whenever a new file is added, because there's currently no way to express "this page list depends on this folder" — only edges between two already-existing targets.
-
-## Project: Jobs
-
-Jobs was originally a generic concept, but after working it's clear that there are two main categories of jobs: async writes and data fetching. We can probably handle async writes with inbuilt logic. So, instead of a "job", we should have "read uri"? That way we can cache all the uris.
+- [`DATA_FLOW.md`](./DATA_FLOW.md) — the build, stage by stage.
+- `startServer` (`lib/serve.js`) — the dev server: watcher, live
+  reload, the loopback-only write endpoint and plugin commands.

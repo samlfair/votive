@@ -13,7 +13,6 @@
   "license": "MIT",
   "author": "Sam Littlefair",
   "type": "module",
-  "main": "index.js",
   "exports": {
     ".": "./lib/bundle.js"
   },
@@ -26,9 +25,6 @@
     "encoding-sniffer": "^0.2.1",
     "faye-websocket": "^0.11.4",
     "p-limit": "^7.3.0",
-    "unified": "^11.0.5",
-    "unist-util-visit": "^5.0.0",
-    "workerpool": "^10.0.1",
     "yaml": "^2.9.1"
   }
 }
