@@ -307,3 +307,57 @@ test("dependencies: a filtered listing tracks the labels it filters on", async (
     assert.equal(isStale(database, "tags/foo.html"), true)
   })
 })
+
+test("dependencies: an edge is recorded against the stored target path, whatever the caller spelled", async (t) => {
+  await t.test("targetBySource: a read by source path stales when the target's property changes", () => {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "blog/a.html", source: "blog/a.md", metadata: { title: "A" } })
+    database.target.create({ path: "nav.html", metadata: {} })
+    database.target.markFresh("nav.html")
+
+    const target = database.target.getWithTrackers("blog/a.md", "nav.html", "source")
+    target.metadata.title
+
+    const rows = database.dependency.getAllByTarget("blog/a.html")
+    assert.deepEqual(rows.map(r => r.property).sort(), ["", "title"])
+    assert.ok(rows.every(r => r.dependent === "nav.html"))
+
+    database.target.create({ path: "blog/a.html", source: "blog/a.md", metadata: { title: "B" } })
+    assert.equal(isStale(database, "nav.html"), true)
+  })
+
+  await t.test("target: a read with a ./ prefix records the edge under the normalised path", () => {
+    const database = createDatabase(":memory:")
+    database.target.create({ path: "blog/a.html", metadata: { title: "A" } })
+    database.target.create({ path: "nav.html", metadata: {} })
+    database.target.markFresh("nav.html")
+
+    const target = database.target.getWithTrackers("./blog/a.html", "nav.html")
+    target.metadata.title
+
+    database.target.create({ path: "blog/a.html", metadata: { title: "B" } })
+    assert.equal(isStale(database, "nav.html"), true)
+  })
+})
+
+test("target paths are stored as the router gave them: no lowercasing", () => {
+  const database = createDatabase(":memory:")
+  database.target.create({ path: "About.html", metadata: {} })
+
+  assert.equal(database.target.get("About.html")?.path, "About.html")
+  assert.equal(database.target.get("about.html"), undefined)
+})
+
+test("target: a tracked read is a plain object - no phantom key, and deleting the target stales a dependent that only checked it exists", () => {
+  const database = createDatabase(":memory:")
+  database.target.create({ path: "blog/a.html", metadata: { title: "A" } })
+  database.target.create({ path: "nav.html", metadata: {} })
+  database.target.markFresh("nav.html")
+
+  const target = database.target.getWithTrackers("blog/a.html", "nav.html")
+  assert.ok(!("blog/a.html" in target))
+  assert.doesNotThrow(() => JSON.stringify(target))
+
+  database.target.delete("blog/a.html")
+  assert.equal(isStale(database, "nav.html"), true)
+})

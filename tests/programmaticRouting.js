@@ -231,8 +231,7 @@ test("readFile: an api.url() call attributes to the routed target path", async (
 function hashSecretSegments(sourcePath) {
   return sourcePath
     .split("/")
-    // Lowercase, like a real md5 hex digest: canonicalTargetPath
-    // lowercases every stored target path.
+    // Lowercase, like a real md5 hex digest.
     .map(segment => segment.startsWith("-") ? `h${segment.slice(1)}h` : segment)
     .join("/")
 }
@@ -499,6 +498,38 @@ test("a source's settings apply to the folder its target is in, wherever routing
     assert.equal(seen, "moved", "the neighbour in the target folder reads it")
     assert.deepEqual(site.database.setting.getByFolder("published").stage, [null, ["moved"]])
     assert.equal(site.database.setting.getByFolder("drafts").stage, undefined, "nothing is scoped to the source folder")
+    await site.close()
+  })
+})
+
+test("router: the returned path is used verbatim - a mixed-case router lands a mixed-case file", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "About.md"), "content")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          router: ({ dir, name }) => ({ dir, name, ext: ".html" }),
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: () => ({ metadata: {} }),
+          writeFile: (target) => ({ data: `written:${target.path}` })
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    await (await site.build()).deferred
+    const cache = site.database
+
+    assert.ok(cache.target.get("About.html"))
+    assert.equal(cache.target.get("about.html"), undefined)
+    assert.equal(await exists(path.join(config.targetFolder, "About.html")), true)
+    assert.equal(await exists(path.join(config.targetFolder, "about.html")), false)
     await site.close()
   })
 })
