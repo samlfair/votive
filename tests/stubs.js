@@ -434,3 +434,59 @@ test("createStubs: a file created at a stub's path takes the row over, and givin
     await site.close()
   })
 })
+
+test("createStubs: enumeration runs to a fixed point, so a stub derived from another stub's target sees it in the same pass", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "post.md"), "hello")
+
+    const config = configFor(sourceFolder, [
+      // Declares an index for every folder that has a page - the index is a stub.
+      textProcessor({
+        createStubs: () => [{ path: "generated.md" }],
+        expandStubs: () => ({ text: "generated" })
+      }),
+      // Declares a listing of every target, including the one above.
+      {
+        extensions: [".txt"],
+        format: "text",
+        router: ({ name, dir }) => ({ dir, name, ext: ".txt" }),
+        createStubs: ({ api }) => [{ path: "listing.txt", params: { paths: api.targets({ recursive: true }).map(t => t.path).sort() } }],
+        expandStubs: ({ params }) => ({ text: params.paths.join("\n") }),
+        readFile: (source) => ({ data: source.text, metadata: {} }),
+        writeFile: (target) => ({ data: target.data })
+      }
+    ])
+
+    const site = await bundler(config)
+    await (await site.build()).deferred
+
+    const listing = await import("node:fs/promises").then(fs => fs.readFile(path.join(sourceFolder, "_out", "listing.txt"), "utf-8"))
+    assert.ok(listing.includes("generated.html"), `the listing should include the other stub's target on the first pass: ${listing}`)
+    assert.ok(listing.includes("post.html"))
+
+    // And nothing is stale or re-read on the next pass.
+    const before = site.database.raw.prepare("SELECT stub FROM sources WHERE path = 'listing.txt'").get().stub
+    await (await site.build()).deferred
+    assert.equal(site.database.raw.prepare("SELECT stub FROM sources WHERE path = 'listing.txt'").get().stub, before)
+    assert.equal(site.database.raw.prepare("SELECT COUNT(*) AS n FROM targets WHERE stale = 1").get().n, 0)
+    await site.close()
+  })
+})
+
+test("createStubs: an enumerator that never settles is cut off with a warning, not a hang", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    let n = 0
+    const warnings = []
+    const config = {
+      ...configFor(sourceFolder, [textProcessor({
+        createStubs: () => [{ path: "flip.md", params: { n: n++ } }],
+        expandStubs: ({ params }) => ({ text: `flip ${params.n}` })
+      })]),
+      log: (level, message) => { if (level === "warn") warnings.push(message) }
+    }
+    const site = await bundler(config)
+    await (await site.build()).deferred
+    assert.ok(warnings.some(w => /did not settle/.test(w)), warnings.join("; "))
+    await site.close()
+  })
+})
