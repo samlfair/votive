@@ -4,6 +4,7 @@ import { mkdtemp, writeFile, rm, readdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import createDatabase from "../lib/createDatabase.js"
+import bundler from "../lib/bundle.js"
 import readSources from "../lib/readSources.js"
 import readBuffers from "../lib/readBuffers.js"
 
@@ -214,5 +215,46 @@ test("readBuffers: deferred buffer processing", async (t) => {
       // The default location was never created.
       await assert.rejects(() => readdir(path.join(sourceFolder, ".cache")))
     })
+  })
+})
+
+test("readBuffers: a buffer file replaced in place is a cache miss - the cache keys on mtime, not path alone", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    let reads = 0
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      cacheDirectory: path.join(sourceFolder, "_cache"),
+      verbose: false,
+      plugins: [{
+        name: "bytes",
+        processors: [{
+          extensions: [".bin"],
+          format: "buffer",
+          router: ({ name, dir, ext }) => ({ dir, name, ext }),
+          readFile: (source) => { reads++; return { metadata: { size: source.buffer().length } } },
+          writeFile: (target) => ({ data: target.buffer() })
+        }]
+      }]
+    }
+    await writeFile(path.join(sourceFolder, "a.bin"), Buffer.from("one"))
+    const site = await bundler(config)
+    await (await site.build()).deferred
+    assert.equal(site.database.target.get("a.bin").metadata.size, 3)
+    assert.equal(reads, 1)
+
+    // Same bytes, second launch: served from the cache.
+    const again = await bundler(config)
+    await (await again.build()).deferred
+    assert.equal(reads, 1, "unchanged file: a cache hit")
+    await again.close()
+
+    // Replaced in place, with a later mtime.
+    await new Promise(resolve => setTimeout(resolve, 20))
+    await writeFile(path.join(sourceFolder, "a.bin"), Buffer.from("seven"))
+    await (await site.build()).deferred
+    assert.equal(site.database.target.get("a.bin").metadata.size, 5, "the new bytes were read")
+    assert.equal(reads, 2)
+    await site.close()
   })
 })
