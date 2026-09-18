@@ -361,3 +361,20 @@ test("target: a tracked read is a plain object - no phantom key, and deleting th
   database.target.delete("blog/a.html")
   assert.equal(isStale(database, "nav.html"), true)
 })
+
+test("target: a miss is tracked - a dependent that asked for a target that did not exist is staled when it appears", () => {
+  const database = createDatabase(":memory:")
+  database.target.create({ path: "nav.html", metadata: {} })
+  database.target.markFresh("nav.html")
+
+  assert.equal(database.target.getWithTrackers("partials/later.html", "nav.html"), undefined)
+  assert.equal(isStale(database, "nav.html"), false)
+
+  database.target.create({ path: "partials/later.html", metadata: { x: 1 } })
+  assert.equal(isStale(database, "nav.html"), true)
+
+  // A miss by source path is not tracked: nothing can stale on it.
+  database.target.markFresh("nav.html")
+  assert.equal(database.target.getWithTrackers("nothing.md", "nav.html", "source"), undefined)
+  assert.equal(database.dependency.getAllByTarget("nothing.md").length, 0)
+})
