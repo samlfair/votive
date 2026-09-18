@@ -81,3 +81,23 @@ test("target.getByFolder: limit", async (t) => {
     assert.equal(results.length, 4)
   })
 })
+
+test("getByFolder: data is lazy - not in the listing's row, fetched and tracked on access", () => {
+  const database = createDatabase(":memory:")
+  database.target.create({ path: "a.html", data: "<p>a</p>", metadata: { title: "A" } })
+  database.target.create({ path: "nav.html", metadata: {} })
+  database.target.markFresh("nav.html")
+
+  const [target] = database.target.getByFolder({ folder: "", dependent: "nav.html" })
+  assert.equal(Object.keys(target).includes("data"), true, "data is still an enumerable property")
+  assert.equal(database.dependency.getAllByTarget("a.html").some(row => row.property === "data"), false, "not tracked until read")
+  assert.equal(target.data, "<p>a</p>")
+  assert.equal(database.dependency.getAllByTarget("a.html").some(row => row.property === "data"), true, "tracked once read")
+
+  database.target.setData("a.html", "<p>changed</p>")
+  assert.equal(database.raw.prepare("SELECT stale FROM targets WHERE path = 'nav.html'").get().stale, 1)
+
+  // Untracked (no dependent): still readable.
+  const [plain] = database.target.getByFolder({ folder: "" })
+  assert.equal(plain.data, "<p>changed</p>")
+})
