@@ -140,3 +140,98 @@ test("bundler: slow deferred buffer work doesn't block a concurrent foreground s
     await deferred
   })
 })
+
+test("bundler: coalesced build() calls run every pass's deferred runner, each exactly once", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    const reads = []
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      cacheDirectory: path.join(sourceFolder, "_cache"),
+      verbose: false,
+      plugins: [{
+        name: "bin",
+        processors: [{
+          format: "buffer",
+          extensions: [".bin"],
+          router: ({ name, dir, ext }) => ({ name, dir, ext }),
+          readFile: async (source) => {
+            reads.push(source.path)
+            await wait(30)
+            return { data: source.buffer().toString() }
+          },
+          writeFile: (target) => ({ data: target.data ?? "" })
+        }]
+      }]
+    }
+
+    await writeFile(path.join(sourceFolder, "a.bin"), "a1")
+    await writeFile(path.join(sourceFolder, "b.bin"), "b1")
+    const site = await bundler(config)
+    await (await site.build()).deferred
+    reads.length = 0
+
+    // Two edits whose build() calls coalesce: the second arrives while
+    // the first pass runs, so the loop runs a trailing pass. Each pass
+    // found one buffer to read. Both runners must run, and once each -
+    // the first used to be dropped (its edit lost until a full scan)
+    // and the second run by every waiting caller.
+    await writeFile(path.join(sourceFolder, "a.bin"), "a2")
+    await writeFile(path.join(sourceFolder, "b.bin"), "b2")
+    const first = site.build({ changed: ["a.bin"] })
+    const second = site.build({ changed: ["b.bin"] })
+    const results = await Promise.all([first, second])
+    await Promise.all(results.map(result => result.deferred))
+
+    assert.deepEqual(reads.sort(), ["a.bin", "b.bin"])
+    const { readFile } = await import("node:fs/promises")
+    assert.equal(await readFile(path.join(sourceFolder, "_out", "a.bin"), "utf8"), "a2")
+    assert.equal(await readFile(path.join(sourceFolder, "_out", "b.bin"), "utf8"), "b2")
+  })
+})
+
+test("bundler: deferred batches from successive passes run one after another, not overlapped", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    let inFlight = 0
+    let mostInFlight = 0
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      cacheDirectory: path.join(sourceFolder, "_cache"),
+      verbose: false,
+      plugins: [{
+        name: "bin",
+        processors: [{
+          format: "buffer",
+          extensions: [".bin"],
+          router: ({ name, dir, ext }) => ({ name, dir, ext }),
+          readFile: async (source) => {
+            inFlight++
+            mostInFlight = Math.max(mostInFlight, inFlight)
+            await wait(40)
+            inFlight--
+            return { data: source.buffer().toString() }
+          },
+          writeFile: (target) => ({ data: target.data ?? "" })
+        }]
+      }]
+    }
+
+    await writeFile(path.join(sourceFolder, "a.bin"), "a1")
+    await writeFile(path.join(sourceFolder, "b.bin"), "b1")
+    const site = await bundler(config)
+    await (await site.build()).deferred
+    mostInFlight = 0
+
+    // Edit a, let its pass finish (its runner is now in flight), then
+    // edit b: b's runner waits for a's batch rather than decoding
+    // beside it.
+    await writeFile(path.join(sourceFolder, "a.bin"), "a2")
+    const first = await site.build({ changed: ["a.bin"] })
+    await writeFile(path.join(sourceFolder, "b.bin"), "b2")
+    const second = await site.build({ changed: ["b.bin"] })
+    await Promise.all([first.deferred, second.deferred])
+
+    assert.equal(mostInFlight, 1)
+  })
+})
