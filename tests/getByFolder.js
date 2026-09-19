@@ -101,3 +101,48 @@ test("getByFolder: data is lazy - not in the listing's row, fetched and tracked 
   const [plain] = database.target.getByFolder({ folder: "" })
   assert.equal(plain.data, "<p>changed</p>")
 })
+
+test("every metadata property is lazy: fetched and tracked on access, whole object still iterable and serializable", () => {
+  const database = createDatabase(":memory:")
+  const tree = { type: "root", children: [{ type: "text", value: "big" }] }
+  database.target.create({ path: "a.html", metadata: { title: "A", tags: ["x", "y"], draft: false, hastAbstract: tree } })
+  database.target.create({ path: "reader.html", metadata: {} })
+  database.target.markFresh("reader.html")
+
+  // A listing.
+  const [listed] = database.target.getByFolder({ folder: "", query: { title: "A" }, dependent: "reader.html" })
+  const tracked = () => database.dependency.getAllByTarget("a.html").map(row => row.property).sort()
+  assert.deepEqual(tracked(), [], "nothing tracked before a property is read")
+  assert.equal(listed.metadata.title, "A")
+  assert.deepEqual(tracked(), ["title"], "only what was read")
+  assert.deepEqual(listed.metadata.tags, ["x", "y"])
+  assert.equal(listed.metadata.draft, false, "a boolean round-trips")
+  assert.deepEqual(listed.metadata.hastAbstract, tree)
+  assert.deepEqual(Object.keys(listed.metadata).sort(), ["draft", "hastAbstract", "tags", "title"])
+  assert.deepEqual(JSON.parse(JSON.stringify(listed.metadata)).tags, ["x", "y"])
+  assert.equal("title" in listed.metadata, true)
+  assert.equal("missing" in listed.metadata, false)
+
+  // A single target, tracked and untracked.
+  database.target.create({ path: "other.html", metadata: {} })
+  database.target.markFresh("other.html")
+  const one = database.target.getWithTrackers("a.html", "other.html")
+  assert.equal(database.dependency.getAllByTarget("a.html").some(row => row.dependent === "other.html" && row.property === "tags"), false)
+  assert.deepEqual(one.metadata.tags, ["x", "y"])
+  assert.equal(database.dependency.getAllByTarget("a.html").some(row => row.dependent === "other.html" && row.property === "tags"), true)
+  assert.equal(database.target.get("a.html").metadata.title, "A")
+
+  // An unrelated change leaves the reader alone; the property it read does not.
+  database.target.create({ path: "a.html", metadata: { title: "A", tags: ["x", "y"], draft: false, hastAbstract: tree, views: 1 } })
+  assert.equal(database.raw.prepare("SELECT stale FROM targets WHERE path = 'other.html'").get().stale, 0)
+  database.target.create({ path: "a.html", metadata: { title: "A", tags: ["x"], draft: false, hastAbstract: tree, views: 1 } })
+  assert.equal(database.raw.prepare("SELECT stale FROM targets WHERE path = 'other.html'").get().stale, 1)
+})
+
+test("getByFolder: a target with no metadata at all is still listed", () => {
+  const database = createDatabase(":memory:")
+  database.target.create({ path: "bare.html", metadata: {} })
+  database.target.create({ path: "a.html", metadata: { title: "A" } })
+  assert.deepEqual(database.target.getByFolder({ folder: "" }).map(target => target.path).sort(), ["a.html", "bare.html"])
+  assert.deepEqual(database.target.getByFolder({ folder: "" }).find(target => target.path === "bare.html").metadata, {})
+})
