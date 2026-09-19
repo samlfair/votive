@@ -105,8 +105,18 @@ test("declared types: only an exact { $type, $value } is a declaration, and $typ
   assert.deepEqual(database.target.get("a.html").metadata.shape, { $type: "geo", $value: 1, extra: 2 })
   assert.equal(database.target.get("a.html").types.shape, "object")
 
-  assert.throws(() => database.target.create({ path: "b.html", metadata: { date: { $type: "Date", $value: "x" } } }), /lowercase/)
-  assert.throws(() => database.target.create({ path: "c.html", metadata: { date: { $type: "", $value: "x" } } }), /lowercase/)
+  // A malformed name is logged and the declaration kept as the plain
+  // object it is - a bad value is coerced, never a reason to lose the
+  // file (lib/attempt.js).
+  const logged = []
+  const logging = createDatabase(":memory:", { log: (level, message) => logged.push([level, message]) })
+  logging.target.create({ path: "b.html", metadata: { date: { $type: "Date", $value: "x" } } })
+  logging.target.create({ path: "c.html", metadata: { date: { $type: "", $value: "x" } } })
+  assert.deepEqual(logging.target.get("b.html").metadata.date, { $type: "Date", $value: "x" })
+  assert.equal(logging.target.get("b.html").types.date, "object")
+  assert.equal(logged.length, 2)
+  assert.match(logged[0][1], /lowercase/)
+  assert.equal(logged[0][0], "error")
 })
 
 test("declared types: an object or array $value still reads back as a real object or array", () => {

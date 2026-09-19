@@ -385,14 +385,16 @@ test("config.router: returning nothing leaves the path unchanged", async () => {
   })
 })
 
-test("config.router: returning a non-string is an error that names the path", async () => {
+test("config.router: returning a non-string is logged naming the path, and the file is skipped", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "page.md"), "content")
+    const logged = []
 
     const config = {
       sourceFolder,
       targetFolder: path.join(sourceFolder, "_out"),
       verbose: false,
+      log: (level, message) => logged.push([level, message]),
       router: () => ({ dir: "nope" }),
       plugins: [{
         name: "test-plugin",
@@ -407,7 +409,11 @@ test("config.router: returning a non-string is an error that names the path", as
     }
 
     const site = await bundler(config)
-    await assert.rejects(() => site.build(), /page\.md/)
+    await (await site.build()).deferred
+    const errors = logged.filter(([level]) => level === "error")
+    assert.equal(errors.length, 1)
+    assert.match(errors[0][1], /page\.md/)
+    assert.equal(site.database.target.getAll().length, 0)
   })
 })
 

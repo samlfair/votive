@@ -373,7 +373,7 @@ test("bundle: an existing on-disk database is opened in WAL mode and each build 
   })
 })
 
-test("bundle: a writeFile that throws rolls the build back, leaving the database as it was", async () => {
+test("bundle: a stage that throws rolls the build back, leaving the database as it was", async () => {
   await withTempSourceFolder(async (sourceFolder) => {
     await writeFile(path.join(sourceFolder, "a.md"), "first")
 
@@ -381,6 +381,9 @@ test("bundle: a writeFile that throws rolls the build back, leaving the database
     /** @type {boolean} */
     let explode = false
 
+    // createStubs is deliberately outside the per-file boundary (see
+    // lib/attempt.js): an enumerator that throws is a plugin bug, and
+    // the pass it was in is rolled back whole.
     const config = {
       sourceFolder,
       targetFolder: path.join(sourceFolder, "_out"),
@@ -392,17 +395,19 @@ test("bundle: a writeFile that throws rolls the build back, leaving the database
           router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
           extensions: [".md", ".html"],
           format: "text",
+          createStubs: () => {
+            if (explode) throw new Error("enumerator exploded")
+            return []
+          },
           readFile: (source) => ({ data: source.text, metadata: {} }),
-          writeFile: (target) => {
-            if (explode) throw new Error("plugin exploded")
-            return { data: target.abstract?.text ?? "" }
-          }
+          writeFile: (target) => ({ data: target.data ?? "" })
         }]
       }]
     }
 
     const first = await bundler(config)
     await (await first.build()).deferred
+    await first.close()
 
     const { DatabaseSync } = await import("node:sqlite")
     const countRows = () => {
@@ -413,15 +418,63 @@ test("bundle: a writeFile that throws rolls the build back, leaving the database
     }
     const before = countRows()
 
-    // A new source file plus a throwing writeFile: without the rollback,
+    // A new source file plus a throwing enumerator: without the rollback,
     // b's target row would survive the failed build.
     await writeFile(path.join(sourceFolder, "b.md"), "second")
     explode = true
 
     const second = await bundler(config)
-    await assert.rejects(() => second.build(), /plugin exploded/)
+    await assert.rejects(() => second.build(), /enumerator exploded/)
+    await second.close()
 
     assert.equal(countRows(), before)
+  })
+})
+
+test("hooks: a readFile or writeFile that throws is logged naming the file, that file is skipped, and the build completes", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    await writeFile(path.join(sourceFolder, "good.md"), "fine")
+    await writeFile(path.join(sourceFolder, "bad-read.md"), "unreadable")
+    await writeFile(path.join(sourceFolder, "bad-write.md"), "unwritable")
+    const logged = []
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      log: (level, message) => logged.push([level, message]),
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => {
+            if (source.path === "bad-read.md") throw new Error("cannot read this")
+            return { data: source.text, metadata: {} }
+          },
+          writeFile: (target) => {
+            if (target.path === "bad-write.html") throw new Error("cannot write this")
+            return { data: target.data ?? "" }
+          }
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    await (await site.build()).deferred
+
+    const errors = logged.filter(([level]) => level === "error").map(([, message]) => message)
+    assert.equal(errors.length, 2, errors.join("\n"))
+    assert.match(errors.find(m => m.includes("bad-read.md")), /cannot read this/)
+    assert.match(errors.find(m => m.includes("bad-write.html")), /cannot write this/)
+
+    // The good file is built; the unreadable one has no row (tried again
+    // next pass); the unwritable one's target is left stale.
+    assert.equal(await readFile(path.join(sourceFolder, "_out", "good.html"), "utf-8"), "fine")
+    assert.equal(site.database.source.get("bad-read.md"), undefined)
+    assert.deepEqual(site.database.target.getStale().map(t => t.path), ["bad-write.html"])
+    await site.close()
   })
 })
 
