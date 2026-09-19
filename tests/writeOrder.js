@@ -116,3 +116,40 @@ test("writeTargets: with shouldYield true from the start, only the edited source
     assert.deepEqual(database.target.getStale().map(t => t.path), ["listing.html"])
   })
 })
+
+test("writeTargets: a target restaled by another write in the same pass is written again before the pass ends", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    // The listing's row is created before the page's, so the cold pass
+    // writes it first; the page's write then stores its data, which
+    // stales the listing. The pass must not end with it stale.
+    await writeFile(path.join(sourceFolder, "a-listing.md"), "")
+    await writeFile(path.join(sourceFolder, "b-page.md"), "v1")
+    const order = []
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          router: ({ name, dir }) => ({ dir, name, ext: ".html" }),
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => ({ data: source.text, metadata: {} }),
+          writeFile: (target, { api }) => {
+            order.push(target.path)
+            if (target.path !== "a-listing.html") return { data: `<p>${target.data}</p>` }
+            return { data: api.targets({ folder: "", recursive: true }).filter(t => t.path === "b-page.html").map(t => t.data).join("") }
+          }
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    await (await site.build()).deferred
+
+    assert.deepEqual(site.database.target.getStale(), [])
+    assert.equal(await readFile(path.join(sourceFolder, "_out", "a-listing.html"), "utf8"), "<p>v1</p>")
+    assert.equal(order.filter(p => p === "a-listing.html").length, 2, "written, restaled by the page, written again")
+  })
+})
