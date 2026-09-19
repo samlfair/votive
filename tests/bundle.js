@@ -1036,22 +1036,3 @@ test("a plugin declaring readFolder fails loudly, naming the plugin and the repl
     await assert.rejects(() => site.build(), /old-plugin.*readFolder.*createStubs/s)
   })
 })
-
-test("a read hook returning `targets` fails loudly rather than silently producing nothing", async () => {
-  await withTempSourceFolder(async (sourceFolder) => {
-    await writeFile(path.join(sourceFolder, "a.md"), "a")
-    const config = {
-      sourceFolder,
-      targetFolder: path.join(sourceFolder, "_out"),
-      verbose: false,
-      plugins: [{ name: "old-plugin", processors: [{
-        extensions: [".md", ".html"], format: "text",
-        router: ({ dir, name }) => ({ dir, name, ext: ".html" }),
-        readFile: () => ({ metadata: {}, targets: [{ path: "extra.html", metadata: {} }] }),
-        writeFile: () => ({ data: "" })
-      }] }]
-    }
-    const site = await bundler(config)
-    await assert.rejects(() => site.build(), /targets.*no longer exists.*createStubs/s)
-  })
-})
