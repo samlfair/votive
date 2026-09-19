@@ -127,9 +127,8 @@ test("declared types: an on-disk database from before the column gets it on open
   const folder = await mkdtemp(path.join(tmpdir(), "votive-declared-"))
   const file = path.join(folder, ".votive.db")
   try {
-    // Lay the schema down on disk (a new path starts in memory and is
-    // backed up by saveDB), then take the column away, as an older votive
-    // would have left it.
+    // Lay the schema down on disk, then take the column away, as an
+    // older votive would have left it.
     const first = createDatabase(file)
     first.target.create({ path: "old.html", metadata: { title: "Old" } })
     await first.saveDB(true)
@@ -143,6 +142,28 @@ test("declared types: an on-disk database from before the column gets it on open
     assert.equal(database.target.get("a.html").types.date, "date")
     assert.equal(database.target.get("old.html").types.title, "text")
     database.close()
+  } finally {
+    await rm(folder, { recursive: true, force: true })
+  }
+})
+
+test("a new database path opens on disk from the first build, so nothing is backed up per pass", async () => {
+  const path = await import("node:path")
+  const { existsSync } = await import("node:fs")
+  const { mkdtemp, rm } = await import("node:fs/promises")
+  const { tmpdir } = await import("node:os")
+  const folder = await mkdtemp(path.join(tmpdir(), "votive-ondisk-"))
+  const file = path.join(folder, "nested", ".votive.db")
+  try {
+    const database = createDatabase(file)
+    assert.equal(existsSync(file), true, "the file exists before any save")
+    database.target.create({ path: "a.html", metadata: { title: "A" } })
+    await database.saveDB(true)
+    database.close()
+
+    const reopened = createDatabase(file)
+    assert.equal(reopened.target.get("a.html").metadata.title, "A")
+    reopened.close()
   } finally {
     await rm(folder, { recursive: true, force: true })
   }
