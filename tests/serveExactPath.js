@@ -43,6 +43,14 @@ test("serve: a url with no extension is a page unless a file exists at exactly t
     assert.equal(wellKnown.status, 200, "the exact file wins over about.html-style defaulting")
     assert.match(wellKnown.headers.get("content-type"), /^text\/plain/)
     assert.equal(await wellKnown.text(), "did:plc:test")
+
+    // One url per page: a trailing slash is a permanent redirect to the
+    // canonical form, query string kept; the root is its own.
+    const slashed = await fetch(`${base}/about/?x=1`, { redirect: "manual" })
+    assert.equal(slashed.status, 301)
+    assert.equal(slashed.headers.get("location"), "/about?x=1")
+    const root = await fetch(`${base}/`, { redirect: "manual" })
+    assert.notEqual(root.status, 301)
   } finally {
     if (server) await server.close()
     await rm(sourceFolder, { recursive: true, force: true })
