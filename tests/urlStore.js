@@ -1,7 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import http from "node:http"
-import { mkdtemp, writeFile, readFile, rm, mkdir, readdir } from "node:fs/promises"
+import { mkdtemp, writeFile, readFile, rm, mkdir, readdir, utimes } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import YAML from "yaml"
@@ -227,6 +227,11 @@ test("editing a url file wins; deleting it refetches", async () => {
       const [file] = await storeFiles(folder)
       const absolute = path.join(folder, "links", file)
       await writeFile(absolute, (await readFile(absolute, "utf-8")).replace("fetched #1", "edited by hand"))
+      // The edit can land in the same millisecond as the fetch wrote the
+      // file, which the mtime gate reads as unchanged; a person's edit never
+      // does. Move the mtime on so the test is not a race.
+      const later = new Date(Date.now() + 1000)
+      await utimes(absolute, later, later)
       await (await site.build({ changed: [path.join("links", file)] })).deferred
       assert.deepEqual(await rendered(), { title: "edited by hand" })
       assert.equal(hits, 1, "an edit is not a refetch")
