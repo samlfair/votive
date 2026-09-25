@@ -1,6 +1,6 @@
 {
   "name": "votive",
-  "version": "0.4.2",
+  "version": "0.5.0-beta.0",
   "description": "A file processor.",
   "homepage": "https://github.com/samlfair/votive#readme",
   "bugs": {
@@ -29,5 +29,8 @@
     "faye-websocket": "^0.11.4",
     "p-limit": "^7.3.0",
     "yaml": "^2.9.1"
-  }
+  },
+  "files": [
+    "lib"
+  ]
 }
