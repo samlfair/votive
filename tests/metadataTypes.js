@@ -100,3 +100,16 @@ test("metadata booleans survive a round trip", async (t) => {
     assert.ok(!stale.includes("reader.html"), `reader.html should not be stale, got ${stale.join(", ")}`)
   })
 })
+
+test("text that looks like a number stays text: metadata.value has no affinity", () => {
+  const database = createDatabase(":memory:")
+  const seed = { title: "2022", code: "007", exponent: "1e3", padded: " 5", count: 2022, ratio: 1.5 }
+  database.target.create({ path: "a.html", metadata: seed })
+  const read = database.target.get("a.html").metadata
+  for (const [key, value] of Object.entries(seed)) {
+    assert.strictEqual(read[key], value, key)
+  }
+  const listed = database.target.getAll().find(t => t.path === "a.html").metadata
+  assert.strictEqual(listed.title, "2022", "a listing too")
+  assert.strictEqual(listed.count, 2022)
+})

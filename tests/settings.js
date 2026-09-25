@@ -518,7 +518,7 @@ test("schema version: an on-disk database from a different user_version is disca
 
     const reopened = createDatabase(databasePath)
     assert.deepEqual(reopened.setting.getAll(), [], "old rows should not survive a schema version change")
-    assert.equal(reopened.raw.prepare("PRAGMA user_version").get().user_version, 1)
+    assert.equal(reopened.raw.prepare("PRAGMA user_version").get().user_version, 2)
     reopened.raw.close()
   } finally {
     await rm(folder, { recursive: true, force: true })
