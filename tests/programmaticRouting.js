@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { mkdtemp, writeFile, rm, stat } from "node:fs/promises"
+import { mkdtemp, writeFile, rm, stat, utimes } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import bundler from "../lib/bundle.js"
@@ -105,6 +105,56 @@ test("readFile: write: false creates a target without writing a file to disk", a
 
     // ...but nothing was written to disk.
     assert.equal(await exists(path.join(config.targetFolder, "partial.html")), false)
+  })
+})
+
+test("a target that becomes virtual loses the file it had; written again, it gets it back", async () => {
+  await withTempSourceFolder(async (sourceFolder) => {
+    const page = path.join(sourceFolder, "page.md")
+    // An edit within the same mtime tick is not an edit; each one moves
+    // the clock on.
+    const edit = async (text, seconds) => {
+      await writeFile(page, text)
+      const when = new Date(Date.now() + seconds * 1000)
+      await utimes(page, when, when)
+    }
+    await edit("public", 0)
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      verbose: false,
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          router: () => ({ dir: [], name: "page", ext: ".html" }),
+          extensions: [".md", ".html"],
+          format: "text",
+          // Nothing to write for the virtual one - the case that returns
+          // before any write is attempted.
+          writeFile: (target) => target.write === false ? undefined : ({ data: target.data }),
+          readFile: (source) => ({ data: source.text, metadata: {}, write: source.text !== "private" })
+        }]
+      }]
+    }
+
+    const site = await bundler(config)
+    try {
+      const output = path.join(config.targetFolder, "page.html")
+      await (await site.build()).deferred
+      assert.equal(await exists(output), true)
+
+      await edit("private", 10)
+      await (await site.build({ changed: ["page.md"] })).deferred
+      assert.equal(site.database.target.get("page.html")?.write, false, "the row stays, virtual")
+      assert.equal(await exists(output), false, "its old file does not")
+
+      await edit("public", 20)
+      await (await site.build({ changed: ["page.md"] })).deferred
+      assert.equal(await exists(output), true)
+    } finally {
+      await site.close()
+    }
   })
 })
 
