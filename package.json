@@ -1,6 +1,6 @@
 {
   "name": "votive",
-  "version": "0.5.2-beta.0",
+  "version": "0.5.2",
   "description": "A file processor.",
   "homepage": "https://github.com/samlfair/votive#readme",
   "bugs": {
