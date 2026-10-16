@@ -43,8 +43,9 @@ says how a source of those becomes a target:
 export default {
   name: "text",
   processors: [{
-    extensions: [".txt"],
-    router: ({ dir, name }) => `${dir}/${name}.html`,
+    extensions: [".txt", ".html"],
+    format: "text",
+    router: ({ dir, name }) => ({ dir, name, ext: ".html" }),
     readFile: (source) => ({
       data: source.text,
       metadata: { title: source.text.split("\n")[0] }

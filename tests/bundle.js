@@ -1085,7 +1085,7 @@ test("a plugin declaring readFolder fails loudly, naming the plugin and the repl
       verbose: false,
       plugins: [{ name: "old-plugin", processors: [{ extensions: [".md"], format: "text", readFolder: () => ({}) }] }]
     }
-    const site = await bundler(config)
-    await assert.rejects(() => site.build(), /old-plugin.*readFolder.*createStubs/s)
+    // When the site is made, not on its first build.
+    await assert.rejects(() => bundler(config), /old-plugin.*readFolder.*createStubs/s)
   })
 })
