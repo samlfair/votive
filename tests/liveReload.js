@@ -82,3 +82,89 @@ test("live reload: an edited page is pushed as its rendered HTML, not its source
     await rm(sourceFolder, { recursive: true, force: true })
   }
 })
+
+/**
+ * A page can be written before the files it names (an image's
+ * derivatives are encoded after it), so a file written for the first
+ * time is pushed too. Every open tab hears it: the server used to keep
+ * one socket, which only the newest tab had and any tab's close
+ * emptied.
+ */
+test("live reload: a new file is pushed to every open tab, without its bytes; a tab closing doesn't silence the rest", async () => {
+  const sourceFolder = await mkdtemp(path.join(tmpdir(), "votive-reload-tabs-"))
+  /** @type {{close: () => Promise<void>} | undefined} */
+  let server
+  /** @type {any[]} */
+  const sockets = []
+
+  try {
+    await writeFile(path.join(sourceFolder, "page.md"), "# Page\n")
+
+    const config = {
+      sourceFolder,
+      targetFolder: path.join(sourceFolder, "_out"),
+      databasePath: path.join(sourceFolder, ".votive.db"),
+      logging: "silent",
+      plugins: [{
+        name: "test-plugin",
+        processors: [{
+          router: (info) => ({ dir: info.dir, name: info.name, ext: ".html" }),
+          extensions: [".md", ".html"],
+          format: "text",
+          readFile: (source) => ({ data: source.text, metadata: {} }),
+          writeFile: (target) => ({ data: `<!doctype html><html><head></head><body>${target.data}</body></html>` })
+        }, {
+          router: (info) => ({ dir: info.dir, name: info.name, ext: info.ext }),
+          extensions: [".bin"],
+          format: "buffer",
+          readFile: () => ({ metadata: {} }),
+          writeFile: (target) => ({ data: target.buffer() })
+        }]
+      }]
+    }
+
+    server = await startServer(config)
+
+    /** @param {any[]} pushes */
+    const open = async (pushes) => {
+      const socket = new WebSocket.Client(`ws://127.0.0.1:${server.port}/`)
+      socket.on("message", (event) => pushes.push(JSON.parse(event.data)))
+      await new Promise(resolve => socket.on("open", resolve))
+      sockets.push(socket)
+      return socket
+    }
+    /** @param {any[]} pushes @param {string} targetPath */
+    const pushOf = (pushes, targetPath) => new Promise((resolve) => {
+      const timer = setTimeout(() => { clearInterval(check); resolve(null) }, 10000)
+      const check = setInterval(() => {
+        const found = pushes.find(push => push.path === targetPath)
+        if (!found) return
+        clearTimeout(timer); clearInterval(check); resolve(found)
+      }, 100)
+    })
+
+    /** @type {any[]} */
+    const first = []
+    /** @type {any[]} */
+    const second = []
+    const firstSocket = await open(first)
+    await open(second)
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    await writeFile(path.join(sourceFolder, "blob.bin"), Buffer.from([0, 255, 1, 254]))
+    const [toFirst, toSecond] = await Promise.all([pushOf(first, "blob.bin"), pushOf(second, "blob.bin")])
+    assert.ok(toFirst && toSecond, "both tabs hear the new file")
+    assert.equal(toSecond.data, null, "a file of bytes is pushed without them")
+
+    // The older tab goes; the newer one still hears edits.
+    firstSocket.close()
+    await new Promise(resolve => setTimeout(resolve, 500))
+    await appendFile(path.join(sourceFolder, "page.md"), "\nMore.\n")
+    const page = await pushOf(second, "page.html")
+    assert.ok(page?.data?.includes("More."), "the remaining tab still gets the edited page")
+  } finally {
+    for (const socket of sockets) socket.close()
+    if (server) await server.close()
+    await rm(sourceFolder, { recursive: true, force: true })
+  }
+})
