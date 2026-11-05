@@ -176,16 +176,13 @@ test("fetchURLs: dispatch is by the url's extension, to a format:'url' processor
         const database = createDatabase(":memory:")
         database.url.request(`${baseUrl}/p`, "post.html")
         const errors = []
-        const original = console.error
-        console.error = (e) => errors.push(String(e))
-        try {
-          const processors = [{ plugin: { name: "t" }, processor: { format: "url", extensions: [""], readURL: () => ({ data: 1 }) } }]
-          const { written } = await fetchURLs(config, database, processors).runFetches()
-          assert.deepEqual(written, [])
-          assert.match(errors.join("\n"), new RegExp(`${baseUrl.replaceAll(".", "\\.")}/p`))
-        } finally {
-          console.error = original
-        }
+        const logged = { ...config, log: (level, message) => { if (level === "error") errors.push(message) } }
+        const processors = [{ plugin: { name: "t" }, processor: { format: "url", extensions: [""], readURL: () => ({ data: 1 }) } }]
+        const { written } = await fetchURLs(logged, database, processors).runFetches()
+        assert.deepEqual(written, [])
+        // Through config.log, not the console, so a host that collects
+        // its build's problems (vowel's check command) sees it.
+        assert.match(errors.join("\n"), new RegExp(`${baseUrl.replaceAll(".", "\\.")}/p`))
       })
     } finally {
       await close()
