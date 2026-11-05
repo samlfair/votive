@@ -103,8 +103,11 @@ test("readFile: write: false creates a target without writing a file to disk", a
     // e.g. api.createTarget() calls, aren't skipped)...
     assert.equal(writeFileCalls, 1)
 
-    // ...but nothing was written to disk.
+    // ...but nothing was written to disk...
     assert.equal(await exists(path.join(config.targetFolder, "partial.html")), false)
+
+    // ...and its output is its data, as a written target's is.
+    assert.equal(cache.target.get("partial.html").data, "should never land on disk")
   })
 })
 
